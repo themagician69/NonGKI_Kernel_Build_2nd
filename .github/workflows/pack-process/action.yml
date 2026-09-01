@@ -32,14 +32,14 @@ runs:
           # Copy File To Anykernel3 (Note lowercase 'k')
           cp -fp "$IMAGE" Anykernel3/
 
-          # Zipping and Push Kernel
+          # Zipping and save directly inside device_kernel/
           cd Anykernel3 || exit 1
-          zip -r9 "../../$FINAL_ZIP" *
+          zip -r9 "../$FINAL_ZIP" *
           cd ..
 
-          # Export package name for upload step to the workspace root
+          # Export package name for upload step
           echo "PACK_NAME=$FINAL_ZIP" >> $GITHUB_ENV
-          echo "[+] Successfully created: $FINAL_ZIP"
+          echo "[+] Successfully created: device_kernel/$FINAL_ZIP"
 
       - name: Make Latest Boot Image
         if: env.PACK_METHOD == 'MKBOOTIMG'
