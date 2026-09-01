@@ -39,7 +39,7 @@ env:
   SUSFS_FIXED : false
 
   AK3_SOURCE : "https://github.com/Legendleo90/AnyKernel3.git"
-  AK3_BRANCH : "master"
+  AK3_BRANCH : "electro"
 
   BOOT_SOURCE : ""
 
