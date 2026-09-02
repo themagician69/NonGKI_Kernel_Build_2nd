@@ -132,15 +132,19 @@ jobs:
           cd /tmp/kernelsu-coccinelle/classic-hooks
           ./apply.sh $GITHUB_WORKSPACE/device_kernel
 
-          # 4. Safely inject forward declarations into fs/namespace.c using Python
+          # 4. Safely inject forward declarations into fs/namespace.c using Python with os.environ
           python3 - << 'EOF'
+          import os
           import re
 
-          path = "$GITHUB_WORKSPACE/device_kernel/fs/namespace.c"
-          with open(path, "r") as f:
-              content = f.read()
+          workspace = os.environ.get("GITHUB_WORKSPACE")
+          path = os.path.join(workspace, "device_kernel/fs/namespace.c")
 
-          declarations = """
+          if os.path.exists(path):
+              with open(path, "r") as f:
+                  content = f.read()
+
+              declarations = """
           struct mount;
           static inline bool may_mount(void);
           static inline int check_mnt(struct mount *mnt);
@@ -148,15 +152,17 @@ jobs:
           static void mntput_no_expire(struct mount *mnt);
           """
 
-          matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
-          if matches:
-              pos = matches[-1].end()
-              content = content[:pos] + "\n" + declarations + content[pos:]
-              with open(path, "w") as f:
-                  f.write(content)
-              print("[+] Successfully added namespace forward declarations.")
+              matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
+              if matches:
+                  pos = matches[-1].end()
+                  content = content[:pos] + "\n" + declarations + content[pos:]
+                  with open(path, "w") as f:
+                      f.write(content)
+                  print("[+] Successfully added namespace forward declarations.")
+              else:
+                  print("[-] Warning: Could not find #include headers in fs/namespace.c")
           else:
-              print("[-] Warning: Could not find #include headers in fs/namespace.c")
+              print(f"[-] Error: Could not find path at {path}")
           EOF
 
           # 5. Run the KernelSU-Next v1.1.1 setup script on the newly hooked source
