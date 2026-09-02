@@ -1,4 +1,4 @@
-name: Build beryllium 
+name: Build Xiaomi beryllium
 
 on:
   workflow_call:
@@ -106,6 +106,9 @@ jobs:
 
       - name: ⌛️ Compilation environment preparation
         uses: ./.github/workflows/build-env
+
+      - name: ⚙️ Get neccssary tools
+        uses: ./.github/workflows/build-ready
 
       - name: 🪛 Extra Kernel Options
         run: |
