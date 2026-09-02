@@ -1,39 +1,99 @@
-name: Build Clean Kernel (Custom Patch Ready)
+name: Build beryllium 
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 env:
-  DEVICE_NAME: "poco f1"
-  DEVICE_CODENAME: "beryllium"
+  # Device env
+  DEVICE_NAME : "poco f1"
+  DEVICE_CODENAME : "beryllium"
 
-  CUSTOM_CMDS: "CLANG_TRIPLE=aarch64-linux-gnu-"
-  EXTRA_CMDS: "LD=ld.lld"
+  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
+  EXTRA_CMDS : "LD=ld.lld"
 
-  KERNEL_SOURCE: "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
-  KERNEL_BRANCH: "staging"
+  KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
+  KERNEL_BRANCH : "staging"
 
-  CLANG_SOURCE: "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
-  CLANG_BRANCH: "lineage-20.0"
+  CLANG_SOURCE : "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
+  CLANG_BRANCH : "lineage-20.0"
 
-  GCC_GNU: false
-  GCC_64_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
-  GCC_64_BRANCH: "android12L-release"
-  GCC_32_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
-  GCC_32_BRANCH: "android12L-release"
+  # Enable GNU GCC so the 32-bit and 64-bit cross compilers are properly set up by his script
+  GCC_GNU : true
+  GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH : "android12L-release"
+  GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH : "android12L-release"
 
-  DEFCONFIG_NAME: "vendor/xiaomi/mi845_defconfig"
+  DEFCONFIG_SOURCE: ""
+  DEFCONFIG_NAME : "vendor/xiaomi/mi845_defconfig"
+  DEFCONFIG_ORIGIN_IMAGE: ""
+  DEFCONFIG_FROM_BOOT: false
+
+  # --- KERNELSU & SUSFS FULLY DISABLED ---
+  KERNELSU_SOURCE : ""
+  KERNELSU_BRANCH : ""
+  KERNELSU_AUTO_GET : "false"
+  KERNELSU_AUTO_FORK : "" 
+
+  SUSFS_ENABLE : false
+  SUSFS_FIXED : false
+
+  AK3_SOURCE : "https://github.com/Legendleo90/AnyKernel3.git"
+  AK3_BRANCH : "electro"
+
+  BOOT_SOURCE : ""
+
+  NEED_DTBO : false
+  NEED_SAFE_DTBO : false
+
+  ROM_TEXT : "any rom"
+
+  # Other env
+  PYTHON_VERSION: "3"
+
+  PACK_METHOD: "Anykernel3"
+  PACK_KMODULES: "false"
+
+  KERNELSU_METHOD: ""
+  KERNELSU_SUS_PATCH: "false"
+
+  PATCHES_SOURCE: ""
+  PATCHES_BRANCH: ""
+
+  SUSFS_FOLDER_FIXED: "" 
+  SUSFS_PATCH_FIXED: "" 
+
+  REKERNEL_ENABLE: "false"
+  DROIDSPACES_ENABLE: "false"
+  NOMOUNT_ENABLE: "false"
+
+  HOOK_METHOD: ""
+
+  KERNEL_PATCH: "false"
+
+  KPM_ENABLE: "false"
+  KPM_INLINE: "false"
+  KPM_KPATCH_NEXT: "false"
+  KPM_PATCH_SOURCE: ""
+
+  BASEBAND_GUARD_ENABLE: "false"
+  BASEBAND_GUARD_BOOT: "false"
+
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
+
+  BUILD_DEBUGGER: "false"
+  SKIP_PATCH: "false"
+
+  BUILD_OTHER_CONFIG: "true"
   MERGE_CONFIG_FILES: "vendor/xiaomi/beryllium.config,vendor/debugfs.config"
 
-  AK3_SOURCE: "https://github.com/Legendleo90/AnyKernel3.git"
-  AK3_BRANCH: "electro"
-
-  PYTHON_VERSION: "3"
-  FREE_MORE_SPACE: "false"
+  FREE_MORE_SPACE: "true"
 
 jobs:
   build-kernel:
-    name: Xiaomi Poco F1 Clean Build
+    name: Xiaomi Mix2s (Evolution X 10 A15)
     runs-on: ubuntu-latest
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -44,125 +104,21 @@ jobs:
       - name: ⏰ Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check System OS Version
-        shell: bash
+      - name: ⌛️ Compilation environment preparation
+        uses: ./.github/workflows/build-env
+
+      - name: ⚙️ Get neccssary tools
+        uses: ./.github/workflows/build-ready
+
+      - name: 🪛 Extra Kernel Options
         run: |
-          . /etc/os-release
-          if [ "$ID" = "ubuntu" ]; then
-              if [ "$VERSION_ID" = "20.04" ]; then
-                  echo "SYSTEM_VERSION=oldest" >> $GITHUB_ENV
-              elif [ "$VERSION_ID" = "22.04" ]; then
-                  echo "SYSTEM_VERSION=older" >> $GITHUB_ENV
-              elif [ "$VERSION_ID" = "24.04" ]; then
-                  echo "SYSTEM_VERSION=newer" >> $GITHUB_ENV
-              else
-                  echo "SYSTEM_VERSION=newer" >> $GITHUB_ENV
-              fi
-          else
-              echo "SYSTEM_VERSION=newer" >> $GITHUB_ENV
-          fi
-
-      - name: Remove useless tools & Free Space
-        shell: bash
-        run: |
-          sudo rm -rf /opt/hostedtoolcache
-          df -h
-
-      - name: Install necessary packages (Original Dev Logic)
-        shell: bash
-        run: |
-          sudo apt update
-          sudo apt install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler cpio liblz4-tool lz4 libz3-4 zstd binutils gcc g++ p7zip p7zip-full
-
-      - name: Set Compile Environment (Clang & GCC Setup)
-        shell: bash
-        run: |
-          cd $GITHUB_WORKSPACE
-
-          # Clone Clang
-          echo "::group::[+] Getting Clang..."
-          git clone "${{ env.CLANG_SOURCE }}" -b "${{ env.CLANG_BRANCH }}" --depth=1 clang-custom
-          echo "::endgroup::"
-
-          # Clone Kernel Source into 'kernel' directory (renamed from device_kernel)
-          echo "::group::[+] Getting Kernel Source..."
-          git clone "${{ env.KERNEL_SOURCE }}" -b "${{ env.KERNEL_BRANCH }}" --depth=1 kernel
-          echo "::endgroup::"
-
-          # Clone AnyKernel3
-          echo "::group::[+] Getting AnyKernel3..."
-          git clone "${{ env.AK3_SOURCE }}" -b "${{ env.AK3_BRANCH }}" --depth=1 anykernel3
-          echo "::endgroup::"
-
-      - name: 🪛 Custom Patches Placeholder
-        shell: bash
-        run: |
-          # --- ADD YOUR CUSTOM PATCHES HERE IF IT BOOTS ---
-          echo "No custom patches applied yet. Ready for testing clean boot."
+          cd $GITHUB_WORKSPACE/device_kernel || true
 
       - name: 🚀 Build Process
-        shell: bash
-        run: |
-          cd kernel
-
-          # Set toolchain paths and explicit target triples
-          export PATH="$GITHUB_WORKSPACE/clang-custom/bin:$PATH"
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CC=clang
-          export LD=ld.lld
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-
-          # Pass extra compiler flags to fix stack protector checks
-          export KBUILD_COMPILER_STRING="$(clang --version | head -n 1)"
-
-          echo "[+] Loading defconfig: ${{ env.DEFCONFIG_NAME }}"
-          make O=out ${{ env.DEFCONFIG_NAME }}
-
-          # Merge extra configurations
-          if [ -n "${{ env.MERGE_CONFIG_FILES }}" ]; then
-            IFS=',' read -ra CONFIGS <<< "${{ env.MERGE_CONFIG_FILES }}"
-            for cfg in "${CONFIGS[@]}"; do
-              if [ -f "arch/arm64/configs/$cfg" ]; then
-                echo "[+] Merging config: $cfg"
-                ./scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/$cfg
-              fi
-            done
-            make O=out olddefconfig
-          fi
-
-          echo "[+] Starting kernel compilation..."
-          make O=out -j$(nproc)
+        uses: ./.github/workflows/build-process
 
       - name: 🔩 Pack Process
-        shell: bash
-        run: |
-          cd kernel
-
-          if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp out/arch/arm64/boot/Image.gz-dtb ../anykernel3/
-          elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
-            cp out/arch/arm64/boot/Image.gz ../anykernel3/
-          elif [ -f "out/arch/arm64/boot/Image" ]; then
-            cp out/arch/arm64/boot/Image ../anykernel3/
-          else
-            echo "[-] Error: Kernel image not found!"
-            exit 1
-          fi
-
-          if [ -f "out/arch/arm64/boot/dtb" ]; then
-            cp out/arch/arm64/boot/dtb ../anykernel3/
-          fi
-
-          cd ../anykernel3
-          rm -rf .git
-          zip -r9 ../PocoF1-Clean-Kernel.zip *
-          echo "[+] Packed successfully!"
+        uses: ./.github/workflows/pack-process
 
       - name: ✏️ Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: PocoF1-Clean-Kernel-${{ env.DEVICE_CODENAME }}
-          path: PocoF1-Clean-Kernel.zip
+        uses: ./.github/workflows/upload-files
