@@ -1,4 +1,4 @@
-name: Build Xiaomi beryllium
+name: KSU old
 
 on:
   workflow_call:
@@ -110,9 +110,39 @@ jobs:
       - name: ⚙️ Get neccssary tools
         uses: ./.github/workflows/build-ready
 
+      - name: 🧹 Clear Stale Ccache
+        run: |
+          ccache -C || true
+          ccache -z || true
+
       - name: 🪛 Extra Kernel Options
         run: |
           cd $GITHUB_WORKSPACE/device_kernel || true
+
+      - name: 🧪 Apply Coccinelle Classic Hooks and KernelSU-Next v1.1.1
+        run: |
+          # 1. Install semantic patching tool (Coccinelle)
+          sudo apt-get update
+          sudo apt-get install -y coccinelle
+
+          # 2. Clone the classic hooks repository
+          git clone https://github.com/devnoname120/kernelsu-coccinelle.git /tmp/kernelsu-coccinelle
+
+          # 3. Apply the manual hooks to your kernel source first
+          cd /tmp/kernelsu-coccinelle/classic-hooks
+          ./apply.sh $GITHUB_WORKSPACE/device_kernel
+
+          # 4. Fix implicit declaration errors in fs/namespace.c for Linux 4.9
+          cd $GITHUB_WORKSPACE/device_kernel
+          sed -i '/#include "mount.h"/a \
+          struct mount;\
+          static inline bool may_mount(void);\
+          static inline int check_mnt(struct mount *mnt);\
+          static int do_umount(struct mount *mnt, int flags);\
+          static void mntput_no_expire(struct mount *mnt);' fs/namespace.c
+
+          # 5. Run the KernelSU-Next v1.1.1 setup script on the newly hooked source
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.1.1
 
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
