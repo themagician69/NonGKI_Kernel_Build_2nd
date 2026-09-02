@@ -111,14 +111,12 @@ runs:
           cd $GITHUB_WORKSPACE/device_kernel
           echo "[+] Clean build mode: Skipping clean_hook."
 
-      - name: Set KernelSU (Bypassed for Clean Build)
+      - name: Set KernelSU (Clear Dummy for KernelSU-Next Injection)
         shell: bash
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
-          echo "[+] KernelSU skipped. Creating dummy folders for rootless build."
-          mkdir -p drivers/kernelsu
-          touch drivers/kernelsu/Kconfig
-          touch drivers/kernelsu/Makefile
+          echo "[+] Removing dummy folder so manual KernelSU-Next v1.1.1 can inject real source."
+          rm -rf drivers/kernelsu
 
       - name: SukiSU-Ultra Fixed (Bypassed)
         shell: bash
@@ -137,3 +135,4 @@ runs:
           cd $GITHUB_WORKSPACE/device_kernel
           # Keep baseline config writing safe without forcing root configurations
           echo "[+] Base configuration checks completed."
+          
