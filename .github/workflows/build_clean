@@ -1,0 +1,123 @@
+name: Build Clean Kernel (Poco F1 - No KSU)
+
+on:
+  workflow_dispatch:
+
+env:
+  DEVICE_NAME: "poco f1"
+  DEVICE_CODENAME: "beryllium"
+
+  CUSTOM_CMDS: "CLANG_TRIPLE=aarch64-linux-gnu-"
+  EXTRA_CMDS: "LD=ld.lld"
+
+  KERNEL_SOURCE: "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
+  KERNEL_BRANCH: "staging"
+
+  CLANG_SOURCE: "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
+  CLANG_BRANCH: "lineage-20.0"
+
+  DEFCONFIG_NAME: "vendor/xiaomi/mi845_defconfig"
+  MERGE_CONFIG_FILES: "vendor/xiaomi/beryllium.config,vendor/debugfs.config"
+
+  AK3_SOURCE: "https://github.com/Legendleo90/AnyKernel3.git"
+  AK3_BRANCH: "electro"
+
+jobs:
+  build-kernel:
+    name: Xiaomi Poco F1 Clean Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⏰ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⌛️ Compilation environment preparation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git ccache automake flex lzop bison gperf build-essential zip curl \
+            zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 \
+            squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven \
+            libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl \
+            libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev \
+            libgl1-mesa-dev xsltproc unzip device-tree-compiler wget cpio lz4 libz3-4 \
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: ⚙️ Get Clang and Toolchains
+        run: |
+          echo "::group::[+] Getting Clang..."
+          git clone "${{ env.CLANG_SOURCE }}" -b "${{ env.CLANG_BRANCH }}" --depth=1 clang
+          echo "::endgroup::"
+
+          echo "::group::[+] Getting Kernel Source..."
+          git clone "${{ env.KERNEL_SOURCE }}" -b "${{ env.KERNEL_BRANCH }}" --depth=1 kernel
+          echo "::endgroup::"
+
+          echo "::group::[+] Getting AnyKernel3..."
+          git clone "${{ env.AK3_SOURCE }}" -b "${{ env.AK3_BRANCH }}" --depth=1 anykernel3
+          echo "::endgroup::"
+
+      - name: 🚀 Build Process
+        run: |
+          cd kernel
+
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export ${{ env.CUSTOM_CMDS }}
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export ${{ env.EXTRA_CMDS }}
+
+          echo "[+] Loading defconfig: ${{ env.DEFCONFIG_NAME }}"
+          make O=out ${{ env.DEFCONFIG_NAME }}
+
+          # Merge extra configurations if defined
+          if [ -n "${{ env.MERGE_CONFIG_FILES }}" ]; then
+            IFS=',' read -ra CONFIGS <<< "${{ env.MERGE_CONFIG_FILES }}"
+            for cfg in "${CONFIGS[@]}"; do
+              if [ -f "arch/arm64/configs/$cfg" ]; then
+                echo "[+] Merging config: $cfg"
+                ./scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/$cfg
+              else
+                echo "[-] Warning: Config arch/arm64/configs/$cfg not found!"
+              fi
+            done
+            make O=out olddefconfig
+          fi
+
+          echo "[+] Starting kernel compilation..."
+          make O=out -j$(nproc)
+
+      - name: 🔩 Pack Process
+        run: |
+          cd kernel
+
+          # Locate and copy built kernel image
+          if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb ../anykernel3/
+          elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
+            cp out/arch/arm64/boot/Image.gz ../anykernel3/
+          elif [ -f "out/arch/arm64/boot/Image" ]; then
+            cp out/arch/arm64/boot/Image ../anykernel3/
+          else
+            echo "[-] Error: Kernel image not found in output directory!"
+            exit 1
+          fi
+
+          # Copy DTB if present
+          if [ -f "out/arch/arm64/boot/dtb" ]; then
+            cp out/arch/arm64/boot/dtb ../anykernel3/
+          fi
+
+          cd ../anykernel3
+          rm -rf .git
+          zip -r9 ../PocoF1-Clean-Kernel.zip *
+          echo "[+] Kernel successfully packed into PocoF1-Clean-Kernel.zip"
+
+      - name: ✏️ Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocoF1-Clean-Kernel-${{ env.DEVICE_CODENAME }}
+          path: PocoF1-Clean-Kernel.zip
