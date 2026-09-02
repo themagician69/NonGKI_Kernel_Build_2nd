@@ -110,6 +110,11 @@ jobs:
       - name: ⚙️ Get neccssary tools
         uses: ./.github/workflows/build-ready
 
+      - name: 🧹 Clear Stale Ccache
+        run: |
+          ccache -C || true
+          ccache -z || true
+
       - name: 🪛 Extra Kernel Options
         run: |
           cd $GITHUB_WORKSPACE/device_kernel || true
