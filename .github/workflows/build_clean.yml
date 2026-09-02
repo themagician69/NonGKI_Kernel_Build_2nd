@@ -105,18 +105,18 @@ jobs:
         run: |
           cd kernel
 
-          # Set toolchain paths
+          # Set toolchain paths and explicit target triples
           export PATH="$GITHUB_WORKSPACE/clang-custom/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export CC=clang
-          export ${{ env.CUSTOM_CMDS }}
+          export LD=ld.lld
+          export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          export ${{ env.EXTRA_CMDS }}
 
-          # Install GNU GCC compiler tools if missing
-          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+          # Pass extra compiler flags to fix stack protector checks
+          export KBUILD_COMPILER_STRING="$(clang --version | head -n 1)"
 
           echo "[+] Loading defconfig: ${{ env.DEFCONFIG_NAME }}"
           make O=out ${{ env.DEFCONFIG_NAME }}
