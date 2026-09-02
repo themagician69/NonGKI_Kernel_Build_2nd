@@ -115,9 +115,16 @@ jobs:
           ccache -C || true
           ccache -z || true
 
-      - name: 🪛 Extra Kernel Options
+      - name: 🪛 Extra Kernel Options & Enable CONFIG_KSU
         run: |
           cd $GITHUB_WORKSPACE/device_kernel || true
+          CONFIG_FILE="arch/arm64/configs/vendor/xiaomi/beryllium.config"
+          if [ -f "$CONFIG_FILE" ]; then
+            echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
+            echo "[+] Successfully appended CONFIG_KSU=y to $CONFIG_FILE"
+          else
+            echo "[-] Warning: beryllium.config not found at $CONFIG_FILE"
+          fi
 
       - name: 🧪 Apply Coccinelle Classic Hooks and KernelSU-Next v1.1.1
         run: |
