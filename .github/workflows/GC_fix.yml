@@ -116,7 +116,7 @@ jobs:
           ccache -z || true
 
       - name: 🪛 Extra Kernel Options & Enable CONFIG_KSU & F2FS Stats
-         run: |
+        run: |
           cd $GITHUB_WORKSPACE/device_kernel || true
           CONFIG_FILE="arch/arm64/configs/vendor/xiaomi/beryllium.config"
           if [ -f "$CONFIG_FILE" ]; then
@@ -124,11 +124,10 @@ jobs:
             echo "CONFIG_DEBUG_FS=y" >> "$CONFIG_FILE"
             echo "CONFIG_F2FS_STAT_FS=y" >> "$CONFIG_FILE"
             echo "CONFIG_F2FS_FS_XATTR=y" >> "$CONFIG_FILE"
-            echo "[+] Successfully appended F2FS and DebugFS configurations to $CONFIG_FILE"
+            echo "[+] Successfully appended CONFIG_KSU, DEBUG_FS, and F2FS options to $CONFIG_FILE"
           else
             echo "[-] Warning: beryllium.config not found at $CONFIG_FILE"
           fi
-
 
       - name: 🧪 Apply Coccinelle Classic Hooks and KernelSU-Next v1.1.1
         run: |
