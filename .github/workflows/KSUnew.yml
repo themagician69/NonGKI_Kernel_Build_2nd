@@ -230,16 +230,19 @@ jobs:
                       "#ifndef KSU_HANDLE_DEVPT_STUB\n"
                       "#define KSU_HANDLE_DEVPT_STUB\n"
                       "struct inode;\n"
-                      "static inline void ksu_handle_devpts(struct inode *inode) {}\n"
+                      "static inline int ksu_handle_devpts(struct inode *inode) { return 0; }\n"
                       "#endif\n"
                   )
+                  content = content.replace("extern int ksu_handle_devpts(struct inode*);", "/* extern int ksu_handle_devpts(struct inode*); */")
+                  content = content.replace("extern int ksu_handle_devpts(struct inode *inode);", "/* extern int ksu_handle_devpts(struct inode *inode); */")
+
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
                       content = content[:pos] + "\n" + stub + content[pos:]
                       with open(path, "w") as f:
                           f.write(content)
-                      print("[+] Injected dummy ksu_handle_devpts fallback into fs/devpts/inode.c")
+                      print("[+] Injected compatible ksu_handle_devpts stub into fs/devpts/inode.c")
           EOF
 
           # 8. Patch SELinux hide for 5-argument security_context_to_sid on backported 4.9 kernels
