@@ -213,9 +213,10 @@ jobs:
           echo "[+] Fetching KernelSU-Next v3+ source..."
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-          # 7. Patch devpts/inode.c for missing ksu_handle_devpts symbol
+          # 7. Provide a dummy fallback declaration for ksu_handle_devpts in fs/devpts/inode.c
           python3 - << 'EOF'
           import os
+          import re
 
           workspace = os.environ.get("GITHUB_WORKSPACE", ".")
           path = os.path.join(workspace, "device_kernel/fs/devpts/inode.c")
@@ -224,11 +225,21 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              if "ksu_handle_devpts(" in content:
-                  content = content.replace("ksu_handle_devpts(inode);", "/* ksu_handle_devpts(inode); */")
-                  with open(path, "w") as f:
-                      f.write(content)
-                  print("[+] Commented out legacy ksu_handle_devpts call in fs/devpts/inode.c")
+              if "KSU_HANDLE_DEVPT_STUB" not in content:
+                  stub = (
+                      "#ifndef KSU_HANDLE_DEVPT_STUB\n"
+                      "#define KSU_HANDLE_DEVPT_STUB\n"
+                      "struct inode;\n"
+                      "static inline void ksu_handle_devpts(struct inode *inode) {}\n"
+                      "#endif\n"
+                  )
+                  matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
+                  if matches:
+                      pos = matches[-1].end()
+                      content = content[:pos] + "\n" + stub + content[pos:]
+                      with open(path, "w") as f:
+                          f.write(content)
+                      print("[+] Injected dummy ksu_handle_devpts fallback into fs/devpts/inode.c")
           EOF
 
           # 8. Patch SELinux hide for 5-argument security_context_to_sid on backported 4.9 kernels
