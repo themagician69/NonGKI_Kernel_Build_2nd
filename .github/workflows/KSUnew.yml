@@ -126,7 +126,7 @@ jobs:
             echo "[-] Warning: beryllium.config not found at $CONFIG_FILE"
           fi
 
-            - name: 🧪 Apply SM6250 Manual Drivers & KernelSU-Next v3+
+      - name: 🧪 Apply SM6250 Manual Drivers & KernelSU-Next v3+
         run: |
           sudo apt-get update
           sudo apt-get install -y patchutils python3
