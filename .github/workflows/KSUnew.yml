@@ -213,6 +213,43 @@ jobs:
           echo "[+] Fetching KernelSU-Next v3+ source..."
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
+          # 7. Patch SELinux hide for 5-argument security_context_to_sid on backported 4.9 kernels
+          python3 - << 'EOF'
+          import os
+
+          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
+          possible_paths = [
+              os.path.join(workspace, "device_kernel/drivers/kernelsu/feature/selinux_hide.c"),
+              os.path.join(workspace, "device_kernel/drivers/ksu/feature/selinux_hide.c"),
+              os.path.join(workspace, "device_kernel/drivers/kernelsu/selinux/selinux.h"),
+              os.path.join(workspace, "device_kernel/drivers/ksu/selinux/selinux.h")
+          ]
+
+          for file_path in possible_paths:
+              if os.path.exists(file_path):
+                  with open(file_path, "r") as f:
+                      content = f.read()
+
+                  updated = False
+                  if 'security_context_to_sid("u:r:ksu:s0"' in content:
+                      content = content.replace(
+                          'security_context_to_sid("u:r:ksu:s0"',
+                          'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+                      )
+                      updated = True
+
+                  if 'security_context_to_sid("u:r:priv_app:s0:c512,c768"' in content:
+                      content = content.replace(
+                          'security_context_to_sid("u:r:priv_app:s0:c512,c768"',
+                          'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+                      )
+                      updated = True
+
+                  if updated:
+                      with open(file_path, "w") as f:
+                          f.write(content)
+                      print(f"[+] Successfully patched selinux signature in: {file_path}")
+          EOF
 
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
