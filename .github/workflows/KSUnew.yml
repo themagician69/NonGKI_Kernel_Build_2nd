@@ -126,7 +126,7 @@ jobs:
             echo "[-] Warning: beryllium.config not found at $CONFIG_FILE"
           fi
 
-      - name: 🧪 Apply SM6250 Manual Drivers & KernelSU-Next v3+
+            - name: 🧪 Apply SM6250 Manual Drivers & KernelSU-Next v3+
         run: |
           sudo apt-get update
           sudo apt-get install -y patchutils python3
@@ -151,7 +151,36 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Safely inject forward declarations into fs/namespace.c if needed
+          # 4. Inject ksu_handle_execveat forward declaration into fs/exec.c
+          python3 - << 'EOF'
+          import os
+          import re
+
+          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
+          path = os.path.join(workspace, "device_kernel/fs/exec.c")
+
+          if os.path.exists(path):
+              with open(path, "r") as f:
+                  content = f.read()
+
+              if "ksu_handle_execveat" not in content[:content.find("ksu_handle_execveat") if "ksu_handle_execveat" in content else len(content)]:
+                  header = """
+          #ifdef CONFIG_KSU
+          extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);
+          #else
+          static inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }
+          #endif
+          """
+                  matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
+                  if matches:
+                      pos = matches[-1].end()
+                      content = content[:pos] + "\n" + header + content[pos:]
+                      with open(path, "w") as f:
+                          f.write(content)
+                      print("[+] Successfully added ksu_handle_execveat forward declaration to fs/exec.c")
+          EOF
+
+          # 5. Safely inject forward declarations into fs/namespace.c
           python3 - << 'EOF'
           import os
           import re
@@ -178,17 +207,12 @@ jobs:
                       with open(path, "w") as f:
                           f.write(content)
                       print("[+] Successfully added namespace forward declarations.")
-                  else:
-                      print("[-] Warning: Could not find #include headers in fs/namespace.c")
-              else:
-                  print("[!] Forward declarations already present in fs/namespace.c")
-          else:
-              print(f"[-] Error: Could not find path at {path}")
           EOF
 
-          # 5. Fetch KernelSU-Next v3+ driver tree into drivers/ksu
+          # 6. Fetch KernelSU-Next v3+ driver tree into drivers/ksu
           echo "[+] Fetching KernelSU-Next v3+ source..."
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
 
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
