@@ -6,50 +6,48 @@ on:
 
 env:
   # Device env
-  DEVICE_NAME : "poco f1"
-  DEVICE_CODENAME : "beryllium"
+  DEVICE_NAME: "poco f1"
+  DEVICE_CODENAME: "beryllium"
 
-  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  EXTRA_CMDS : "LD=ld.lld"
+  CUSTOM_CMDS: "CLANG_TRIPLE=aarch64-linux-gnu-"
+  EXTRA_CMDS: "LD=ld.lld"
 
-  KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
-  KERNEL_BRANCH : "staging"
+  KERNEL_SOURCE: "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
+  KERNEL_BRANCH: "staging"
 
-  CLANG_SOURCE : "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
-  CLANG_BRANCH : "lineage-20.0"
+  CLANG_SOURCE: "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
+  CLANG_BRANCH: "lineage-20.0"
 
-  # Enable GNU GCC so the 32-bit and 64-bit cross compilers are properly set up by his script
-  GCC_GNU : true
-  GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
-  GCC_64_BRANCH : "android12L-release"
-  GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
-  GCC_32_BRANCH : "android12L-release"
+  GCC_GNU: true
+  GCC_64_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH: "android12L-release"
+  GCC_32_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH: "android12L-release"
 
   DEFCONFIG_SOURCE: ""
-  DEFCONFIG_NAME : "vendor/xiaomi/mi845_defconfig"
+  DEFCONFIG_NAME: "vendor/xiaomi/mi845_defconfig"
   DEFCONFIG_ORIGIN_IMAGE: ""
   DEFCONFIG_FROM_BOOT: false
 
   # --- KERNELSU & SUSFS FULLY DISABLED ---
-  KERNELSU_SOURCE : ""
-  KERNELSU_BRANCH : ""
-  KERNELSU_AUTO_GET : "false"
-  KERNELSU_AUTO_FORK : "" 
+  KERNELSU_SOURCE: ""
+  KERNELSU_BRANCH: ""
+  KERNELSU_AUTO_GET: "false"
+  KERNELSU_AUTO_FORK: "" 
 
-  SUSFS_ENABLE : false
-  SUSFS_FIXED : false
+  SUSFS_ENABLE: false
+  SUSFS_FIXED: false
 
-  AK3_SOURCE : "https://github.com/Legendleo90/AnyKernel3.git"
-  AK3_BRANCH : "electro"
+  AK3_SOURCE: "https://github.com/Legendleo90/AnyKernel3.git"
+  AK3_BRANCH: "electro"
 
-  BOOT_SOURCE : ""
+  BOOT_SOURCE: ""
 
-  NEED_DTBO : false
-  NEED_SAFE_DTBO : false
+  NEED_DTBO: false
+  NEED_SAFE_DTBO: false
 
-  ROM_TEXT : "any rom"
+  ROM_TEXT: "any rom"
 
-  # Other env
   PYTHON_VERSION: "3"
 
   PACK_METHOD: "Anykernel3"
@@ -101,21 +99,21 @@ jobs:
       CCACHE_HARDLINK: "true"
 
     steps:
-      - name: ⏰ Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: ⌛️ Compilation environment preparation
+      - name: Compilation environment preparation
         uses: ./.github/workflows/build-env
 
-      - name: ⚙️ Get neccssary tools
+      - name: Get neccssary tools
         uses: ./.github/workflows/build-ready
 
-      - name: 🧹 Clear Stale Ccache
+      - name: Clear Stale Ccache
         run: |
           ccache -C || true
           ccache -z || true
 
-      - name: 🪛 Extra Kernel Options & Enable CONFIG_KSU
+      - name: Extra Kernel Options & Enable CONFIG_KSU
         run: |
           cd $GITHUB_WORKSPACE/device_kernel || true
           CONFIG_FILE="arch/arm64/configs/vendor/xiaomi/beryllium.config"
@@ -127,25 +125,25 @@ jobs:
             echo "[-] Warning: beryllium.config not found at $CONFIG_FILE"
           fi
 
-      - name: 🧪 Apply SM6250 Manual Drivers & KernelSU-Next v3+
+      - name: Apply SM6250 Manual Drivers & KernelSU-Next v3+
         run: |
           sudo apt-get update
           sudo apt-get install -y patchutils python3
 
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # 1. Download commit 7f5f639 from rifsxd/android_kernel_xiaomi_sm6250
+          # 1. Download manual hook patch
           echo "[+] Downloading manual hook patch..."
           curl -sSL https://github.com/rifsxd/android_kernel_xiaomi_sm6250/commit/7f5f639fb8d98e893e9bfc14d922e865b42c1806.patch -o raw_commit.patch
 
-          # 2. Filter out drivers/ksu and fs/exec.c to prevent patch failures
-          echo "[+] Filtering out duplicate driver files and fs/exec.c..."
+          # 2. Filter drivers/ksu and fs/exec.c
+          echo "[+] Filtering driver files and fs/exec.c..."
           filterdiff -x 'a/drivers/ksu/*' -x 'b/drivers/ksu/*' \
                      -x 'a/drivers/kernelsu/*' -x 'b/drivers/kernelsu/*' \
                      -x 'a/fs/exec.c' -x 'b/fs/exec.c' \
                      raw_commit.patch > core_hooks.patch || cp raw_commit.patch core_hooks.patch
 
-          # 3. Apply core VFS/drivers hooks cleanly
+          # 3. Apply core hooks
           echo "[+] Applying core kernel hooks..."
           git apply --3way --ignore-whitespace core_hooks.patch || {
             echo "[!] Standard 3-way patch failed. Attempting fuzzy apply..."
@@ -153,7 +151,7 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Inject ksu_handle_execveat declaration AND execution hook safely into fs/exec.c
+          # 4. Inject header and execution hook into fs/exec.c
           python3 - << 'EOF'
           import os
           import re
@@ -165,38 +163,27 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              # 1. Header / Declaration
               if "ksu_handle_execveat" not in content:
-                  header = """
-#ifdef CONFIG_KSU
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);
-#else
-static inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }
-#endif
-"""
+                  header = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#else\nstatic inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }\n#endif\n"
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
-                      content = content[:pos] + "\n" + header + content[pos:]
+                      content = content[:pos] + header + content[pos:]
 
-              # 2. Inject hook cleanly inside do_execveat_common before retval return
               if "ksu_handle_execveat(&fd" not in content:
                   hook_code = "\n\t#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t#endif\n"
-                  
-                  # Look for the start of do_execveat_common function body
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
-                      # Find first opening brace of the function
                       brace_pos = content.find("{", pos)
                       if brace_pos != -1:
                           content = content[:brace_pos+1] + hook_code + content[brace_pos+1:]
-                          print("[+] Successfully injected ksu_handle_execveat hook into start of do_execveat_common")
+                          print("[+] Injected ksu_handle_execveat into do_execveat_common")
 
               with open(path, "w") as f:
                   f.write(content)
           EOF
 
-          # 5. Safely inject forward declarations into fs/namespace.c
+          # 5. Inject forward declarations into fs/namespace.c
           python3 - << 'EOF'
           import os
           import re
@@ -209,34 +196,28 @@ static inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, v
                   content = f.read()
 
               if "struct mount;" not in content:
-                  declarations = """
-          struct mount;
-          static inline bool may_mount(void);
-          static inline int check_mnt(struct mount *mnt);
-          static int do_umount(struct mount *mnt, int flags);
-          static void mntput_no_expire(struct mount *mnt);
-          """
+                  declarations = "\nstruct mount;\nstatic inline bool may_mount(void);\nstatic inline int check_mnt(struct mount *mnt);\nstatic int do_umount(struct mount *mnt, int flags);\nstatic void mntput_no_expire(struct mount *mnt);\n"
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
-                      content = content[:pos] + "\n" + declarations + content[pos:]
+                      content = content[:pos] + declarations + content[pos:]
                       with open(path, "w") as f:
                           f.write(content)
-                      print("[+] Successfully added namespace forward declarations.")
+                      print("[+] Added namespace forward declarations.")
           EOF
 
-          # 6. Fetch KernelSU-Next v3+ driver tree into drivers/ksu
+          # 6. Fetch KernelSU-Next v3+
           echo "[+] Fetching KernelSU-Next v3+ source..."
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-          # 7. Force CONFIG_KSU_MANUAL_HOOK=y alongside CONFIG_KSU=y in config file
+          # 7. Force CONFIG_KSU_MANUAL_HOOK=y
           CONFIG_FILE="arch/arm64/configs/vendor/xiaomi/beryllium.config"
           if [ -f "$CONFIG_FILE" ]; then
             grep -q "CONFIG_KSU_MANUAL_HOOK=y" "$CONFIG_FILE" || echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$CONFIG_FILE"
             echo "[+] Verified CONFIG_KSU_MANUAL_HOOK=y in $CONFIG_FILE"
           fi
 
-          # 8. Provide a dummy fallback declaration for ksu_handle_devpts in fs/devpts/inode.c
+          # 8. Provide fallback stub for ksu_handle_devpts
           python3 - << 'EOF'
           import os
           import re
@@ -249,26 +230,20 @@ static inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, v
                   content = f.read()
 
               if "KSU_HANDLE_DEVPT_STUB" not in content:
-                  stub = (
-                      "#ifndef KSU_HANDLE_DEVPT_STUB\n"
-                      "#define KSU_HANDLE_DEVPT_STUB\n"
-                      "struct inode;\n"
-                      "static inline int ksu_handle_devpts(struct inode *inode) { return 0; }\n"
-                      "#endif\n"
-                  )
+                  stub = "\n#ifndef KSU_HANDLE_DEVPT_STUB\n#define KSU_HANDLE_DEVPT_STUB\nstruct inode;\nstatic inline int ksu_handle_devpts(struct inode *inode) { return 0; }\n#endif\n"
                   content = content.replace("extern int ksu_handle_devpts(struct inode*);", "/* extern int ksu_handle_devpts(struct inode*); */")
                   content = content.replace("extern int ksu_handle_devpts(struct inode *inode);", "/* extern int ksu_handle_devpts(struct inode *inode); */")
 
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
-                      content = content[:pos] + "\n" + stub + content[pos:]
+                      content = content[:pos] + stub + content[pos:]
                       with open(path, "w") as f:
                           f.write(content)
                       print("[+] Injected compatible ksu_handle_devpts stub into fs/devpts/inode.c")
           EOF
 
-          # 9. Patch SELinux hide for 5-argument security_context_to_sid on backported 4.9 kernels
+          # 9. Patch SELinux hide
           python3 - << 'EOF'
           import os
 
@@ -306,11 +281,11 @@ static inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, v
                       print(f"[+] Successfully patched selinux signature in: {file_path}")
           EOF
 
-      - name: 🚀 Build Process
+      - name: Build Process
         uses: ./.github/workflows/build-process
 
-      - name: 🔩 Pack Process
+      - name: Pack Process
         uses: ./.github/workflows/pack-process
 
-      - name: ✏️ Upload Artifacts
+      - name: Upload Artifacts
         uses: ./.github/workflows/upload-files
