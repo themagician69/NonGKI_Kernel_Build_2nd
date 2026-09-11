@@ -165,7 +165,7 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              # 1. Inject Header / Declaration safely after include blocks
+              # 1. Header / Declaration
               if "ksu_handle_execveat" not in content:
                   header = """
 #ifdef CONFIG_KSU
@@ -179,19 +179,18 @@ static inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, v
                       pos = matches[-1].end()
                       content = content[:pos] + "\n" + header + content[pos:]
 
-              # 2. Inject functional hook directly inside do_execveat_common
+              # 2. Inject hook cleanly inside do_execveat_common before retval return
               if "ksu_handle_execveat(&fd" not in content:
-                  hook_code = """
-	#ifdef CONFIG_KSU
-	ksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);
-	#endif
-"""
-                  if "static int do_execveat_common(" in content:
-                      pos = content.find("static int do_execveat_common(")
-                      ret_pos = content.find("return ", pos)
-                      if ret_pos != -1:
-                          content = content[:ret_pos] + hook_code + content[ret_pos:]
-                          print("[+] Successfully injected ksu_handle_execveat hook into do_execveat_common")
+                  hook_code = "\n\t#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t#endif\n"
+                  
+                  # Look for the start of do_execveat_common function body
+                  pos = content.find("do_execveat_common(")
+                  if pos != -1:
+                      # Find first opening brace of the function
+                      brace_pos = content.find("{", pos)
+                      if brace_pos != -1:
+                          content = content[:brace_pos+1] + hook_code + content[brace_pos+1:]
+                          print("[+] Successfully injected ksu_handle_execveat hook into start of do_execveat_common")
 
               with open(path, "w") as f:
                   f.write(content)
