@@ -1,4 +1,4 @@
-name: KSUv3
+name: KSU v3
 
 on:
   workflow_call:
@@ -151,7 +151,7 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Inject header and execution hook into fs/exec.c
+          # 4. Inject header and execution hook into fs/exec.c (ISO C90 compliant)
           python3 - << 'EOF'
           import os
           import re
@@ -171,13 +171,13 @@ jobs:
                       content = content[:pos] + header + content[pos:]
 
               if "ksu_handle_execveat(&fd" not in content:
-                  hook_code = "\n\t#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t#endif\n"
+                  hook_code = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
                       brace_pos = content.find("{", pos)
                       if brace_pos != -1:
                           content = content[:brace_pos+1] + hook_code + content[brace_pos+1:]
-                          print("[+] Injected ksu_handle_execveat into do_execveat_common")
+                          print("[+] Injected C90-safe ksu_handle_execveat block into do_execveat_common")
 
               with open(path, "w") as f:
                   f.write(content)
