@@ -6,10 +6,10 @@ runs:
       - name: Patch Kernel for no-kprobe
         shell: bash
         run: |
-          cd $GITHUB_WORKSPACE/device_kernel
+          cd "$GITHUB_WORKSPACE/device_kernel"
 
           # Detect SuSFS is used to enable the SuSFS inline hook
-          if [[ "${{ env.SUSFS_ENABLE }}" == "true" ]]; then
+          if [ "$SUSFS_ENABLE" = "true" ]; then
             # Core
             cp /tmp/Patches/susfs_inline_hook_patches.sh ./
             bash susfs_inline_hook_patches.sh ./
@@ -17,42 +17,23 @@ runs:
             echo "[+] executed SuSFS inline hook successfully."
 
           # Check syscall hook
-          elif [[ "${{ env.HOOK_METHOD }}" == "syscall" ]]; then
+          elif [ "$HOOK_METHOD" = "syscall" ]; then
             # Core
             cp /tmp/Patches/syscall_hook_patches.sh ./
             bash syscall_hook_patches.sh ./
 
             # Safe SELinux LSM Hook Injection
-            python3 -c "
-import os, re
+            if [ -f "security/selinux/hooks.c" ]; then
+              if ! grep -q "ksu_handle_execve" security/selinux/hooks.c; then
+                sed -i '/static int selinux_bprm_set_creds(struct linux_binprm \*bprm)/a \textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);' security/selinux/hooks.c
+                echo "[+] Injected ksu_handle_execve into SELinux hooks."
+              fi
 
-hooks_path = 'security/selinux/hooks.c'
-if os.path.exists(hooks_path):
-    with open(hooks_path, 'r') as f:
-        content = f.read()
-
-    updated = False
-
-    if 'ksu_handle_execve' not in content:
-        pattern = r'(static int selinux_bprm_set_creds\(struct linux_binprm \*bprm\)\s*\{)'
-        replacement = r'\1\n\textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);'
-        content, count = re.subn(pattern, replacement, content)
-        if count > 0:
-            updated = True
-            print('[+] Injected ksu_handle_execve into SELinux hooks.')
-
-    if 'ksu_handle_prctl' not in content:
-        pattern = r'(static int selinux_task_prctl\(int option, unsigned long arg2, unsigned long arg3,\s*unsigned long arg4, unsigned long arg5\)\s*\{)'
-        replacement = r'\1\n\textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);'
-        content, count = re.subn(pattern, replacement, content)
-        if count > 0:
-            updated = True
-            print('[+] Injected ksu_handle_prctl into SELinux hooks.')
-
-    if updated:
-        with open(hooks_path, 'w') as f:
-            f.write(content)
-"
+              if ! grep -q "ksu_handle_prctl" security/selinux/hooks.c; then
+                sed -i '/static int selinux_task_prctl(int option, unsigned long arg2, unsigned long arg3,/a \textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);' security/selinux/hooks.c
+                echo "[+] Injected ksu_handle_prctl into SELinux hooks."
+              fi
+            fi
 
             echo "[+] executed syscall hook successfully."
 
@@ -70,10 +51,10 @@ if os.path.exists(hooks_path):
           if ! grep -rq "check_symbol_export" "drivers/kernelsu/tools/static_export_check.mk" >/dev/null 2>&1; then
             echo "[-] Your KernelSU needn't this check progress, Skipped."
 
-          elif [[ "${{ env.KPM_ENABLE }}" == "true" ]]; then
+          elif [ "$KPM_ENABLE" = "true" ]; then
             echo "[+] Detected KPM, Skipped."
 
-          elif grep -q "CONFIG_KALLSYMS=y" "./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}" && grep -q "CONFIG_KALLSYMS_ALL=y" "./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}" >/dev/null 2>&1; then
+          elif grep -q "CONFIG_KALLSYMS=y" "./arch/${KERNEL_ARCH}/configs/${DEFCONFIG_NAME}" && grep -q "CONFIG_KALLSYMS_ALL=y" "./arch/${KERNEL_ARCH}/configs/${DEFCONFIG_NAME}" >/dev/null 2>&1; then
             echo "[+] Detected KALLSYMS enabled, Skipped."
 
           else
