@@ -9,7 +9,7 @@ runs:
           cd $GITHUB_WORKSPACE/device_kernel
 
           # Detect SuSFS is used to enable the SuSFS inline hook
-          if [[ ${{ env.SUSFS_ENABLE }} == "true" ]]; then
+          if [[ "${{ env.SUSFS_ENABLE }}" == "true" ]]; then
             # Core
             cp /tmp/Patches/susfs_inline_hook_patches.sh ./
             bash susfs_inline_hook_patches.sh ./
@@ -17,31 +17,48 @@ runs:
             echo "[+] executed SuSFS inline hook successfully."
 
           # Check syscall hook
-          elif [[ ${{ env.HOOK_METHOD }} == "syscall" ]]; then
+          elif [[ "${{ env.HOOK_METHOD }}" == "syscall" ]]; then
             # Core
             cp /tmp/Patches/syscall_hook_patches.sh ./
             bash syscall_hook_patches.sh ./
 
-            # Inject Linux 4.9 SELinux LSM Hooks for KernelSU Next domain escalation
-            if grep -q "selinux_bprm_set_creds" security/selinux/hooks.c; then
-              if ! grep -q "ksu_handle_execve" security/selinux/hooks.c; then
-                sed -i '/selinux_bprm_set_creds/a \  extern int ksu_handle_execve(struct linux_binprm *bprm);\n  ksu_handle_execve(bprm);' security/selinux/hooks.c
-                echo "[+] Injected ksu_handle_execve into SELinux hooks."
-              fi
-            fi
+            # Safe SELinux LSM Hook Injection for 4.9 KernelSU Next
+            python3 - << 'PYEOF'
+            import os
 
-            if grep -q "selinux_task_prctl" security/selinux/hooks.c; then
-              if ! grep -q "ksu_handle_prctl" security/selinux/hooks.c; then
-                sed -i '/selinux_task_prctl/a \  extern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n  ksu_handle_prctl(option, arg2, arg3, arg4, arg5);' security/selinux/hooks.c
-                echo "[+] Injected ksu_handle_prctl into SELinux hooks."
-              fi
-            fi
+            hooks_path = 'security/selinux/hooks.c'
+            if os.path.exists(hooks_path):
+                with open(hooks_path, 'r') as f:
+                    content = f.read()
+
+                updated = False
+
+                # 1. Inject execve hook into selinux_bprm_set_creds
+                if 'selinux_bprm_set_creds' in content and 'ksu_handle_execve' not in content:
+                    target = 'selinux_bprm_set_creds('
+                    patch = 'selinux_bprm_set_creds(\n  extern int ksu_handle_execve(void *bprm);\n  ksu_handle_execve(bprm);\n'
+                    content = content.replace(target, patch, 1)
+                    updated = True
+                    print("[+] Injected ksu_handle_execve into SELinux hooks.")
+
+                # 2. Inject prctl hook into selinux_task_prctl
+                if 'selinux_task_prctl' in content and 'ksu_handle_prctl' not in content:
+                    target = 'selinux_task_prctl('
+                    patch = 'selinux_task_prctl(\n  extern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n  ksu_handle_prctl(option, arg2, arg3, arg4, arg5);\n'
+                    content = content.replace(target, patch, 1)
+                    updated = True
+                    print("[+] Injected ksu_handle_prctl into SELinux hooks.")
+
+                if updated:
+                    with open(hooks_path, 'w') as f:
+                        f.write(content)
+            PYEOF
 
             echo "[+] executed syscall hook successfully."
 
           else
-            echo "[-] please input a vaild option!"
-            false
+            echo "[-] please input a valid option!"
+            exit 1
 
           fi
 
@@ -56,7 +73,7 @@ runs:
           elif [[ "${{ env.KPM_ENABLE }}" == "true" ]]; then
             echo "[+] Detected KPM, Skipped."
 
-          elif grep -q "CONFIG_KALLSYMS=y" "./arch/"${{ env.KERNEL_ARCH }}"/configs/${{ env.DEFCONFIG_NAME }}" && grep -q "CONFIG_KALLSYMS_ALL=y" "./arch/"${{ env.KERNEL_ARCH }}"/configs/${{ env.DEFCONFIG_NAME }}" >/dev/null 2>&1; then
+          elif grep -q "CONFIG_KALLSYMS=y" "./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}" && grep -q "CONFIG_KALLSYMS_ALL=y" "./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}" >/dev/null 2>&1; then
             echo "[+] Detected KALLSYMS enabled, Skipped."
 
           else
