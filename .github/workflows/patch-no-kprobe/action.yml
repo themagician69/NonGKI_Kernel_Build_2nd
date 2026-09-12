@@ -22,37 +22,35 @@ runs:
             cp /tmp/Patches/syscall_hook_patches.sh ./
             bash syscall_hook_patches.sh ./
 
-            # Safe SELinux LSM Hook Injection for 4.9 KernelSU Next
-            python3 - << 'PYEOF'
-            import os
+            # Safe SELinux LSM Hook Injection
+            python3 -c "
+import os
 
-            hooks_path = 'security/selinux/hooks.c'
-            if os.path.exists(hooks_path):
-                with open(hooks_path, 'r') as f:
-                    content = f.read()
+hooks_path = 'security/selinux/hooks.c'
+if os.path.exists(hooks_path):
+    with open(hooks_path, 'r') as f:
+        content = f.read()
 
-                updated = False
+    updated = False
 
-                # 1. Inject execve hook into selinux_bprm_set_creds
-                if 'selinux_bprm_set_creds' in content and 'ksu_handle_execve' not in content:
-                    target = 'selinux_bprm_set_creds('
-                    patch = 'selinux_bprm_set_creds(\n  extern int ksu_handle_execve(void *bprm);\n  ksu_handle_execve(bprm);\n'
-                    content = content.replace(target, patch, 1)
-                    updated = True
-                    print("[+] Injected ksu_handle_execve into SELinux hooks.")
+    if 'selinux_bprm_set_creds' in content and 'ksu_handle_execve' not in content:
+        target = 'selinux_bprm_set_creds('
+        patch = 'selinux_bprm_set_creds(\n  extern int ksu_handle_execve(void *bprm);\n  ksu_handle_execve(bprm);\n'
+        content = content.replace(target, patch, 1)
+        updated = True
+        print('[+] Injected ksu_handle_execve into SELinux hooks.')
 
-                # 2. Inject prctl hook into selinux_task_prctl
-                if 'selinux_task_prctl' in content and 'ksu_handle_prctl' not in content:
-                    target = 'selinux_task_prctl('
-                    patch = 'selinux_task_prctl(\n  extern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n  ksu_handle_prctl(option, arg2, arg3, arg4, arg5);\n'
-                    content = content.replace(target, patch, 1)
-                    updated = True
-                    print("[+] Injected ksu_handle_prctl into SELinux hooks.")
+    if 'selinux_task_prctl' in content and 'ksu_handle_prctl' not in content:
+        target = 'selinux_task_prctl('
+        patch = 'selinux_task_prctl(\n  extern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n  ksu_handle_prctl(option, arg2, arg3, arg4, arg5);\n'
+        content = content.replace(target, patch, 1)
+        updated = True
+        print('[+] Injected ksu_handle_prctl into SELinux hooks.')
 
-                if updated:
-                    with open(hooks_path, 'w') as f:
-                        f.write(content)
-            PYEOF
+    if updated:
+        with open(hooks_path, 'w') as f:
+            f.write(content)
+"
 
             echo "[+] executed syscall hook successfully."
 
