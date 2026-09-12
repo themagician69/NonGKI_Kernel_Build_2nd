@@ -163,7 +163,7 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              # 1. Inject Header
+              # 1. Inject Header at top of file
               if "ksu_handle_execveat" not in content:
                   header = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#else\nstatic inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }\n#endif\n"
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
@@ -171,31 +171,38 @@ jobs:
                       pos = matches[-1].end()
                       content = content[:pos] + header + content[pos:]
 
-              # 2. Inject Execution Hook AFTER Variable Declarations
+              # 2. Safely Inject Execution Hook after ALL local variable declarations
               if "ksu_handle_execveat(&fd" not in content:
                   hook_code = "\n\t#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t#endif\n"
                   
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
-                      # Search for 'pathbuf = NULL;' or the end of declarations
-                      target = content.find("pathbuf = NULL;", pos)
-                      if target != -1:
-                          line_end = content.find(";", target) + 1
-                          content = content[:line_end] + hook_code + content[line_end:]
-                          print("[+] Injected ksu_handle_execveat after variable declarations in do_execveat_common")
-                      else:
-                          # Fallback: search for first executable statement or empty line after brace
-                          brace_pos = content.find("{", pos)
-                          if brace_pos != -1:
-                              # Wrap inside a isolated scope block { ... } as safety fallback
+                      # Find the start of the function body
+                      brace_pos = content.find("{", pos)
+                      if brace_pos != -1:
+                          # Anchor 1: Place directly after 'pathbuf = NULL;' initialization
+                          target = content.find("pathbuf = NULL;", brace_pos)
+                          
+                          # Anchor 2: Fallback to 'check_unsafe_exec' or 'unshare_files' if pathbuf isn't present
+                          if target == -1:
+                              target = content.find("check_unsafe_exec", brace_pos)
+                          if target == -1:
+                              target = content.find("unshare_files", brace_pos)
+
+                          if target != -1:
+                              # Go to the end of the line containing the target statement
+                              line_end = content.find("\n", target) + 1
+                              content = content[:line_end] + hook_code + content[line_end:]
+                              print("[+] Injected ksu_handle_execveat safely after variable declarations.")
+                          else:
+                              # Scope-isolated fallback (prevents breaking C90 rules if no anchor matches)
                               safe_hook = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
                               content = content[:brace_pos+1] + safe_hook + content[brace_pos+1:]
-                              print("[+] Injected ksu_handle_execveat inside block scope in do_execveat_common")
+                              print("[+] Injected ksu_handle_execveat in isolated block scope.")
 
               with open(path, "w") as f:
                   f.write(content)
           EOF
-
 
           # 5. Inject forward declarations into fs/namespace.c
           python3 - << 'EOF'
