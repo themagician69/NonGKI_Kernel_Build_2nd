@@ -24,7 +24,7 @@ runs:
 
             # Safe SELinux LSM Hook Injection
             python3 -c "
-import os
+import os, re
 
 hooks_path = 'security/selinux/hooks.c'
 if os.path.exists(hooks_path):
@@ -33,19 +33,21 @@ if os.path.exists(hooks_path):
 
     updated = False
 
-    if 'selinux_bprm_set_creds' in content and 'ksu_handle_execve' not in content:
-        target = 'selinux_bprm_set_creds('
-        patch = 'selinux_bprm_set_creds(\n  extern int ksu_handle_execve(void *bprm);\n  ksu_handle_execve(bprm);\n'
-        content = content.replace(target, patch, 1)
-        updated = True
-        print('[+] Injected ksu_handle_execve into SELinux hooks.')
+    if 'ksu_handle_execve' not in content:
+        pattern = r'(static int selinux_bprm_set_creds\(struct linux_binprm \*bprm\)\s*\{)'
+        replacement = r'\1\n\textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);'
+        content, count = re.subn(pattern, replacement, content)
+        if count > 0:
+            updated = True
+            print('[+] Injected ksu_handle_execve into SELinux hooks.')
 
-    if 'selinux_task_prctl' in content and 'ksu_handle_prctl' not in content:
-        target = 'selinux_task_prctl('
-        patch = 'selinux_task_prctl(\n  extern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n  ksu_handle_prctl(option, arg2, arg3, arg4, arg5);\n'
-        content = content.replace(target, patch, 1)
-        updated = True
-        print('[+] Injected ksu_handle_prctl into SELinux hooks.')
+    if 'ksu_handle_prctl' not in content:
+        pattern = r'(static int selinux_task_prctl\(int option, unsigned long arg2, unsigned long arg3,\s*unsigned long arg4, unsigned long arg5\)\s*\{)'
+        replacement = r'\1\n\textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);'
+        content, count = re.subn(pattern, replacement, content)
+        if count > 0:
+            updated = True
+            print('[+] Injected ksu_handle_prctl into SELinux hooks.')
 
     if updated:
         with open(hooks_path, 'w') as f:
