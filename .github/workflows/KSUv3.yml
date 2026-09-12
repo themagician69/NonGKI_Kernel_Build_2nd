@@ -151,7 +151,7 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Inject header and execution hook into fs/exec.c (Fixes C90 ISO error)
+          # 4. Inject header and execution hook into fs/exec.c (Fixes C90 ISO error via block scoping)
           python3 - << 'EOF'
           import os
           import re
@@ -171,34 +171,19 @@ jobs:
                       pos = matches[-1].end()
                       content = content[:pos] + header + content[pos:]
 
-              # 2. Safely Inject Execution Hook after ALL local variable declarations
+              # 2. Inject Execution Hook wrapped inside a dedicated block scope
               if "ksu_handle_execveat(&fd" not in content:
-                  hook_code = "\n\t#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t#endif\n"
+                  # Wrapping in { ... } guarantees C90 compliance regardless of surrounding declarations
+                  hook_code = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
                   
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
-                      # Find the start of the function body
+                      # Find entry of do_execveat_common
                       brace_pos = content.find("{", pos)
                       if brace_pos != -1:
-                          # Anchor 1: Place directly after 'pathbuf = NULL;' initialization
-                          target = content.find("pathbuf = NULL;", brace_pos)
-                          
-                          # Anchor 2: Fallback to 'check_unsafe_exec' or 'unshare_files' if pathbuf isn't present
-                          if target == -1:
-                              target = content.find("check_unsafe_exec", brace_pos)
-                          if target == -1:
-                              target = content.find("unshare_files", brace_pos)
-
-                          if target != -1:
-                              # Go to the end of the line containing the target statement
-                              line_end = content.find("\n", target) + 1
-                              content = content[:line_end] + hook_code + content[line_end:]
-                              print("[+] Injected ksu_handle_execveat safely after variable declarations.")
-                          else:
-                              # Scope-isolated fallback (prevents breaking C90 rules if no anchor matches)
-                              safe_hook = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
-                              content = content[:brace_pos+1] + safe_hook + content[brace_pos+1:]
-                              print("[+] Injected ksu_handle_execveat in isolated block scope.")
+                          # Inject immediately at opening brace of function body
+                          content = content[:brace_pos+1] + hook_code + content[brace_pos+1:]
+                          print("[+] Injected block-scoped ksu_handle_execveat into do_execveat_common.")
 
               with open(path, "w") as f:
                   f.write(content)
