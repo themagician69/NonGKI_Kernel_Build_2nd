@@ -1,4 +1,4 @@
-name: Beryllium
+Name: Beryllium
 
 on:
   workflow_call:
@@ -116,20 +116,19 @@ jobs:
       - name: 🔗 Patch for no-kprobe
         uses: ./.github/workflows/patch-no-kprobe
 
-      - name: 🪛 Extra Kernel Options & Fix Linux 4.9 SELinux Args
+      - name: 🪛 Extra Kernel Options & Fix SELinux Policyload Args
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
           # Guarantee KernelSU is enabled in the beryllium merged config fragment
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
 
-          # Ensure SELinux calls use 4 arguments for Linux 4.9 kernel
+          # Fix selinux_status_update_policyload argument count for this kernel
           python3 - << 'EOF'
           import os, glob
 
           workspace = os.environ.get('GITHUB_WORKSPACE', '.')
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
 
-          # Find all KernelSU C/H files
           ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
                       glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
                       glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
@@ -140,12 +139,11 @@ jobs:
                   with open(file_path, 'r') as f:
                       content = f.read()
 
-                  # Replace 5-arg selinux calls with 4-arg calls for 4.9 kernel
-                  if '&selinux_state,' in content:
-                      new_content = content.replace('&selinux_state,', '')
+                  if 'selinux_status_update_policyload(0)' in content:
+                      new_content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
                       with open(file_path, 'w') as f:
                           f.write(new_content)
-                      print(f'[+] Reverted 5-arg selinux_state to 4-arg in: {file_path}')
+                      print(f'[+] Fixed selinux_status_update_policyload in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
