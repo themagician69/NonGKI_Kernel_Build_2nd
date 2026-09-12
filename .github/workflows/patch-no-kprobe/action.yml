@@ -22,6 +22,21 @@ runs:
             cp /tmp/Patches/syscall_hook_patches.sh ./
             bash syscall_hook_patches.sh ./
 
+            # Inject Linux 4.9 SELinux LSM Hooks for KernelSU Next domain escalation
+            if grep -q "selinux_bprm_set_creds" security/selinux/hooks.c; then
+              if ! grep -q "ksu_handle_execve" security/selinux/hooks.c; then
+                sed -i '/selinux_bprm_set_creds/a \  extern int ksu_handle_execve(struct linux_binprm *bprm);\n  ksu_handle_execve(bprm);' security/selinux/hooks.c
+                echo "[+] Injected ksu_handle_execve into SELinux hooks."
+              fi
+            fi
+
+            if grep -q "selinux_task_prctl" security/selinux/hooks.c; then
+              if ! grep -q "ksu_handle_prctl" security/selinux/hooks.c; then
+                sed -i '/selinux_task_prctl/a \  extern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n  ksu_handle_prctl(option, arg2, arg3, arg4, arg5);' security/selinux/hooks.c
+                echo "[+] Injected ksu_handle_prctl into SELinux hooks."
+              fi
+            fi
+
             echo "[+] executed syscall hook successfully."
 
           else
