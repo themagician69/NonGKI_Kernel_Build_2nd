@@ -67,7 +67,7 @@ env:
   DROIDSPACES_ENABLE: "false" # if u need Droidspaces or LXC/Docker.
   NOMOUNT_ENABLE: "false" # if u need NoMount.
 
-  HOOK_METHOD: "manual" # Manual hook method for Non-GKI static builds.
+  HOOK_METHOD: "syscall" # Manual hook method ->  syscall.
 
   KERNEL_PATCH: "false" # If your kernel version is <= 4.9, you have the option of enabling the patch to patch the kernel_write and kernel_read functions.
 
@@ -116,11 +116,37 @@ jobs:
       - name: 🔗 Patch for no-kprobe
         uses: ./.github/workflows/patch-no-kprobe
 
-      - name: 🪛 Extra Kernel Options
+      - name: 🪛 Extra Kernel Options & Fix Linux 4.9 SELinux Args
         run: |
-          # Guarantee KernelSU is enabled in the beryllium merged config fragment
           cd $GITHUB_WORKSPACE/device_kernel
+          # Guarantee KernelSU is enabled in the beryllium merged config fragment
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
+
+          # Ensure SELinux calls use 4 arguments for Linux 4.9 kernel
+          python3 - << 'EOF'
+          import os, glob
+
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
+
+          # Find all KernelSU C/H files
+          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
+
+          for file_path in ksu_files:
+              if os.path.exists(file_path):
+                  with open(file_path, 'r') as f:
+                      content = f.read()
+
+                  # Replace 5-arg selinux calls with 4-arg calls for 4.9 kernel
+                  if '&selinux_state,' in content:
+                      new_content = content.replace('&selinux_state,', '')
+                      with open(file_path, 'w') as f:
+                          f.write(new_content)
+                      print(f'[+] Reverted 5-arg selinux_state to 4-arg in: {file_path}')
+          EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
         uses: ./.github/workflows/patch-rekernel
