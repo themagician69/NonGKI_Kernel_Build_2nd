@@ -119,20 +119,26 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # 1. Ensure Kconfig entry is present so olddefconfig does not drop CONFIG_KSU
+          # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
             KSU_DIR=""
-            [ -d "drivers/kernelsu" ] && KSU_DIR="drivers/kernelsu"
-            [ -d "drivers/ksu" ] && KSU_DIR="drivers/ksu"
+            KSU_SUBDIR=""
+            if [ -d "drivers/kernelsu" ]; then
+              KSU_DIR="drivers/kernelsu"
+              KSU_SUBDIR="kernelsu"
+            elif [ -d "drivers/ksu" ]; then
+              KSU_DIR="drivers/ksu"
+              KSU_SUBDIR="ksu"
+            fi
 
-            if ! grep -q "$KSU_DIR/Kconfig" drivers/Kconfig; then
+            if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
               echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
               echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
             fi
 
-            if ! grep -q "$KSU_DIR" drivers/Makefile; then
-              echo "obj-y += $KSU_DIR/" >> drivers/Makefile
-              echo "[+] Added $KSU_DIR to drivers/Makefile"
+            if ! grep -q "$KSU_SUBDIR/" drivers/Makefile; then
+              echo "obj-y += $KSU_SUBDIR/" >> drivers/Makefile
+              echo "[+] Added obj-y += $KSU_SUBDIR/ to drivers/Makefile"
             fi
           fi
 
