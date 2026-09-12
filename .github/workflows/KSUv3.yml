@@ -151,7 +151,7 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Inject header and execution hook into fs/exec.c (Fixes ISO C90 error)
+          # 4. Inject header and execution hook into fs/exec.c (Fixes C90 ISO error)
           python3 - << 'EOF'
           import os
           import re
@@ -163,6 +163,7 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
+              # 1. Inject Header
               if "ksu_handle_execveat" not in content:
                   header = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#else\nstatic inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }\n#endif\n"
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
@@ -170,19 +171,31 @@ jobs:
                       pos = matches[-1].end()
                       content = content[:pos] + header + content[pos:]
 
+              # 2. Inject Execution Hook AFTER Variable Declarations
               if "ksu_handle_execveat(&fd" not in content:
-                  # Wrap hook in braces block to satisfy ISO C90 (-Wdeclaration-after-statement)
-                  hook_code = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
+                  hook_code = "\n\t#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t#endif\n"
+                  
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
-                      brace_pos = content.find("{", pos)
-                      if brace_pos != -1:
-                          content = content[:brace_pos+1] + hook_code + content[brace_pos+1:]
-                          print("[+] Injected C90-safe ksu_handle_execveat block into do_execveat_common")
+                      # Search for 'pathbuf = NULL;' or the end of declarations
+                      target = content.find("pathbuf = NULL;", pos)
+                      if target != -1:
+                          line_end = content.find(";", target) + 1
+                          content = content[:line_end] + hook_code + content[line_end:]
+                          print("[+] Injected ksu_handle_execveat after variable declarations in do_execveat_common")
+                      else:
+                          # Fallback: search for first executable statement or empty line after brace
+                          brace_pos = content.find("{", pos)
+                          if brace_pos != -1:
+                              # Wrap inside a isolated scope block { ... } as safety fallback
+                              safe_hook = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
+                              content = content[:brace_pos+1] + safe_hook + content[brace_pos+1:]
+                              print("[+] Injected ksu_handle_execveat inside block scope in do_execveat_common")
 
               with open(path, "w") as f:
                   f.write(content)
           EOF
+
 
           # 5. Inject forward declarations into fs/namespace.c
           python3 - << 'EOF'
