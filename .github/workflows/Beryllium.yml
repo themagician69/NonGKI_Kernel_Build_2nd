@@ -33,7 +33,7 @@ env:
   KERNELSU_BRANCH : ""
 
   KERNELSU_AUTO_GET : "true"
-  KERNELSU_AUTO_FORK : "next" # xxksu, rsuntk , next, resukisu and sukisu
+  KERNELSU_AUTO_FORK : "next"
 
   SUSFS_ENABLE : false
   SUSFS_FIXED : false
@@ -49,52 +49,51 @@ env:
   ROM_TEXT : "global"
 
   # Other env
-  PYTHON_VERSION: "3" # Only 2(Ubuntu 22.04 and Ubuntu 20.04) or 3(Any OS Versions).
+  PYTHON_VERSION: "3"
 
-  PACK_METHOD: "Anykernel3" # Anykernel3 need SOURCE and BRANCH, MKBOOTIMG needn't it.
-  PACK_KMODULES: "false" # if u want pack kernel modules (.ko) into Anykernel3.
+  PACK_METHOD: "Anykernel3"
+  PACK_KMODULES: "false"
 
-  KERNELSU_METHOD: "shell" # shell, manual and only.
-  KERNELSU_SUS_PATCH: "false" # if u need manual susfs patch to kernelsu.
+  KERNELSU_METHOD: "shell"
+  KERNELSU_SUS_PATCH: "false"
 
-  PATCHES_SOURCE: "JackA1ltman/NonGKI_Kernel_Patches" # [your_name]/[your_patch] -> gooder123/NonGKI_Patcher
-  PATCHES_BRANCH: "mi_kernel" # [your_branch] -> main
+  PATCHES_SOURCE: "JackA1ltman/NonGKI_Kernel_Patches"
+  PATCHES_BRANCH: "mi_kernel"
 
-  SUSFS_FOLDER_FIXED: "mix2s_evox_a15" # Fill in your patch prefix directory here. Leave it blank if there isn't one. -> your_folder
-  SUSFS_PATCH_FIXED: "susfs_fixed" # Fill in your patches here. If there are multiple patches, please separate them with a comma. Leave it blank if there isn't one. -> patch1,patch2
+  SUSFS_FOLDER_FIXED: "mix2s_evox_a15"
+  SUSFS_PATCH_FIXED: "susfs_fixed"
 
-  REKERNEL_ENABLE: "false" # if u need Re:Kernel.
-  DROIDSPACES_ENABLE: "false" # if u need Droidspaces or LXC/Docker.
-  NOMOUNT_ENABLE: "false" # if u need NoMount.
+  REKERNEL_ENABLE: "false"
+  DROIDSPACES_ENABLE: "false"
+  NOMOUNT_ENABLE: "false"
 
-  HOOK_METHOD: "syscall" # Manual hook method -> syscall.
+  HOOK_METHOD: "syscall"
 
-  KERNEL_PATCH: "false" # If your kernel version is <= 4.9, you have the option of enabling the patch to patch the kernel_write and kernel_read functions.
+  KERNEL_PATCH: "false"
 
-  KPM_ENABLE: "false" # Anyone devices.
-  KPM_INLINE: "false" # Only use it for SukiSU-Ultra.
-  KPM_KPATCH_NEXT: "false" # If u want hook KPatch-Next in build step.
-  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux" # If u want to use KPM Inline,so you need set patch exec file source -> raw.githubusercontent.com/Test/Test/patch .
+  KPM_ENABLE: "false"
+  KPM_INLINE: "false"
+  KPM_KPATCH_NEXT: "false"
+  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux"
 
-  BASEBAND_GUARD_ENABLE: "false" #if u want prevent unauthorized writes to critical partitions/device nodes.
-  BASEBAND_GUARD_BOOT: "false" #if u want to protect boot partition.
+  BASEBAND_GUARD_ENABLE: "false"
+  BASEBAND_GUARD_BOOT: "false"
 
-  GENERATE_DTB: "false" # if u kernel need DTB , but cannot auto generate it. (Only Anykernel3).
-  GENERATE_CHIP: "qcom" # only supported for qcom and mediatek.
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
 
-  BUILD_DEBUGGER: "false" # Output build errors.
-  SKIP_PATCH: "false" # Ignore errors found in Patch Debugger.
+  BUILD_DEBUGGER: "false"
+  SKIP_PATCH: "false"
 
-  BUILD_OTHER_CONFIG: "true" # Merge config files.
+  BUILD_OTHER_CONFIG: "true"
   MERGE_CONFIG_FILES: "vendor/xiaomi/beryllium.config,vendor/debugfs.config"
 
-  FREE_MORE_SPACE: "false" # if u want get more space, enabled it.
+  FREE_MORE_SPACE: "false"
 
 jobs:
   build-kernel:
     name: Beryllium build kernel
-    runs-on: ubuntu-latest # u can changed to ubuntu 22.04, and need container set ubuntu-latest
-    # container: archlinux/archlinux:latest # if u need use arch linux -> archlinux/archlinux:latest or ubuntu 20.04 -> ubuntu:focal
+    runs-on: ubuntu-latest
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -120,7 +119,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # 1. Ensure Kconfig and Makefile entries are present so olddefconfig does not drop CONFIG_KSU
+          # 1. Ensure Kconfig entry is present so olddefconfig does not drop CONFIG_KSU
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
             KSU_DIR=""
             [ -d "drivers/kernelsu" ] && KSU_DIR="drivers/kernelsu"
@@ -137,104 +136,9 @@ jobs:
             fi
           fi
 
-          # 2. Guarantee KernelSU is enabled across defconfig and fragment configs
+          # 2. Guarantee KernelSU is enabled across defconfig and fragments
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
-
-          # Unified SELinux Patch: Fixes both security_context_to_sid and selinux_status_update_policyload
-          python3 - << 'EOF'
-          import os, glob
-
-          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
-          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
-
-          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
-
-          for file_path in ksu_files:
-              if os.path.exists(file_path):
-                  with open(file_path, 'r') as f:
-                      content = f.read()
-
-                  updated = False
-
-                  # 1. Fix selinux_status_update_policyload (1 arg -> 2 args)
-                  if 'selinux_status_update_policyload(0)' in content:
-                      content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
-                      updated = True
-
-                  # 2. Fix security_context_to_sid (4 args -> 5 args)
-                  t1_old = 'security_context_to_sid("u:r:ksu:s0"'
-                  t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-                  if t1_old in content:
-                      content = content.replace(t1_old, t1_new)
-                      updated = True
-
-                  t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
-                  t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-                  if t2_old in content:
-                      content = content.replace(t2_old, t2_new)
-                      updated = True
-
-                  if updated:
-                      with open(file_path, 'w') as f:
-                          f.write(content)
-                      print(f'[+] Applied SELinux patches in: {file_path}')
-          EOF
-
-      - name: 🧰 Patch Kernel of Re:Kernel
-        uses: ./.github/workflows/patch-rekernel
-
-      - name: 💿 Patch Kernel of Droidspaces
-        uses: ./.github/workflows/patch-droidspaces
-
-      - name: 🔒 Patch Kernel of Baseband Guard
-        uses: ./.github/workflows/patch-baseband-guard
-
-      - name: 🚀 Build Process
-        uses: ./.github/workflows/build-process
-
-      - name: 🔩 Pack Process
-        uses: ./.github/workflows/pack-process
-
-      - name: ✏️ Upload Artifacts
-        uses: ./.github/workflows/upload-files
-
-  FREE_MORE_SPACE: "false" # if u want get more space, enabled it.
-
-jobs:
-  build-kernel:
-    name: Beryllium build kernel
-    runs-on: ubuntu-latest # u can changed to ubuntu 22.04, and need container set ubuntu-latest
-    # container: archlinux/archlinux:latest # if u need use arch linux -> archlinux/archlinux:latest or ubuntu 20.04 -> ubuntu:focal
-    env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
-
-    steps:
-      - name: ⏰ Checkout repository
-        uses: actions/checkout@v6
-
-      - name: ⌛️ Compilation environment preparation
-        uses: ./.github/workflows/build-env
-
-      - name: ⚙️ Get neccssary tools
-        uses: ./.github/workflows/build-ready
-
-      - name: 🪝 Patch Kernel of SUSFS
-        uses: ./.github/workflows/patch-susfs
-
-      - name: 🔗 Patch for no-kprobe
-        uses: ./.github/workflows/patch-no-kprobe
-
-      - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
-        run: |
-          cd $GITHUB_WORKSPACE/device_kernel
-          # Guarantee KernelSU is enabled in the beryllium merged config fragment
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
 
           # Unified SELinux Patch: Fixes both security_context_to_sid and selinux_status_update_policyload
           python3 - << 'EOF'
