@@ -1,4 +1,4 @@
-Name: Beryllium
+name: Beryllium
 
 on:
   workflow_call:
