@@ -79,6 +79,9 @@ runs:
                 echo "======================="
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
+
+            # Force-inject CONFIG_KSU right after olddefconfig processing
+            echo "CONFIG_KSU=y" >> out/.config
           fi
 
           if [[ "${{ env.DROIDSPACES_ENABLE }}"  == "true" ]]; then
