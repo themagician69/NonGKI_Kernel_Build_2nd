@@ -67,7 +67,7 @@ env:
   DROIDSPACES_ENABLE: "false" # if u need Droidspaces or LXC/Docker.
   NOMOUNT_ENABLE: "false" # if u need NoMount.
 
-  HOOK_METHOD: "syscall" # Manual hook method ->  syscall.
+  HOOK_METHOD: "syscall" # Manual hook method -> syscall.
 
   KERNEL_PATCH: "false" # If your kernel version is <= 4.9, you have the option of enabling the patch to patch the kernel_write and kernel_read functions.
 
@@ -163,82 +163,6 @@ jobs:
                       with open(file_path, 'w') as f:
                           f.write(content)
                       print(f'[+] Applied SELinux patches in: {file_path}')
-          EOF
-
-      - name: 🧰 Patch Kernel of Re:Kernel
-        uses: ./.github/workflows/patch-rekernel
-
-      - name: 💿 Patch Kernel of Droidspaces
-        uses: ./.github/workflows/patch-droidspaces
-
-      - name: 🔒 Patch Kernel of Baseband Guard
-        uses: ./.github/workflows/patch-baseband-guard
-
-      - name: 🚀 Build Process
-        uses: ./.github/workflows/build-process
-
-      - name: 🔩 Pack Process
-        uses: ./.github/workflows/pack-process
-
-      - name: ✏️ Upload Artifacts
-        uses: ./.github/workflows/upload-files
-
-  FREE_MORE_SPACE: "false" # if u want get more space, enabled it.
-
-jobs:
-  build-kernel:
-    name: Beryllium build kernel
-    runs-on: ubuntu-latest # u can changed to ubuntu 22.04, and need container set ubuntu-latest
-    # container: archlinux/archlinux:latest # if u need use arch linux -> archlinux/archlinux:latest or ubuntu 20.04 -> ubuntu:focal
-    env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
-
-    steps:
-      - name: ⏰ Checkout repository
-        uses: actions/checkout@v6
-
-      - name: ⌛️ Compilation environment preparation
-        uses: ./.github/workflows/build-env
-
-      - name: ⚙️ Get neccssary tools
-        uses: ./.github/workflows/build-ready
-
-      - name: 🪝 Patch Kernel of SUSFS
-        uses: ./.github/workflows/patch-susfs
-
-      - name: 🔗 Patch for no-kprobe
-        uses: ./.github/workflows/patch-no-kprobe
-
-      - name: 🪛 Extra Kernel Options & Fix SELinux Policyload Args
-        run: |
-          cd $GITHUB_WORKSPACE/device_kernel
-          # Guarantee KernelSU is enabled in the beryllium merged config fragment
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
-
-          # Fix selinux_status_update_policyload argument count for this kernel
-          python3 - << 'EOF'
-          import os, glob
-
-          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
-          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
-
-          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
-
-          for file_path in ksu_files:
-              if os.path.exists(file_path):
-                  with open(file_path, 'r') as f:
-                      content = f.read()
-
-                  if 'selinux_status_update_policyload(0)' in content:
-                      new_content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
-                      with open(file_path, 'w') as f:
-                          f.write(new_content)
-                      print(f'[+] Fixed selinux_status_update_policyload in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
