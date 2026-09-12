@@ -156,48 +156,45 @@ jobs:
           import os
           import re
 
-          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
-          path = os.path.join(workspace, "device_kernel/fs/exec.c")
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          path = os.path.join(workspace, 'device_kernel/fs/exec.c')
 
           if os.path.exists(path):
-              with open(path, "r") as f:
+              with open(path, 'r') as f:
                   content = f.read()
 
               # 1. Inject Header at top of file
-              if "ksu_handle_execveat" not in content:
-                  header = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#else\nstatic inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }\n#endif\n"
+              if 'ksu_handle_execveat' not in content:
+                  header = '\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#else\nstatic inline int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }\n#endif\n'
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
                       content = content[:pos] + header + content[pos:]
 
               # 2. Inject Execution Hook AFTER all variable declarations
-              if "ksu_handle_execveat(&fd" not in content:
-                  hook_code = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
+              if 'ksu_handle_execveat(&fd' not in content:
+                  hook_code = '\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n'
                   
-                  pos = content.find("do_execveat_common(")
+                  pos = content.find('do_execveat_common(')
                   if pos != -1:
-                      # Find where the declarations end in do_execveat_common
-                      # Executable code in do_execveat_common begins at one of these standard statements
-                      targets = ["check_unsafe_exec", "unshare_files", "if (fd < 0)", "pathbuf = NULL;"]
+                      targets = ['check_unsafe_exec', 'unshare_files', 'if (fd < 0)', 'pathbuf = NULL;']
                       target_pos = -1
                       
                       for target in targets:
                           found = content.find(target, pos)
                           if found != -1:
-                              # Find the start of the line containing this target
-                              line_start = content.rfind("\n", pos, found)
+                              line_start = content.rfind('\n', pos, found)
                               if line_start != -1:
                                   target_pos = line_start + 1
                                   break
 
                       if target_pos != -1:
                           content = content[:target_pos] + hook_code + content[target_pos:]
-                          print("[+] Injected ksu_handle_execveat after variable declarations.")
+                          print('[+] Injected ksu_handle_execveat after variable declarations.')
                       else:
-                          print("[-] Warning: Could not find anchor for injection in do_execveat_common.")
+                          print('[-] Warning: Could not find anchor for injection in do_execveat_common.')
 
-              with open(path, "w") as f:
+              with open(path, 'w') as f:
                   f.write(content)
           EOF
 
@@ -206,22 +203,22 @@ jobs:
           import os
           import re
 
-          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
-          path = os.path.join(workspace, "device_kernel/fs/namespace.c")
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          path = os.path.join(workspace, 'device_kernel/fs/namespace.c')
 
           if os.path.exists(path):
-              with open(path, "r") as f:
+              with open(path, 'r') as f:
                   content = f.read()
 
-              if "struct mount;" not in content:
-                  declarations = "\nstruct mount;\nstatic inline bool may_mount(void);\nstatic inline int check_mnt(struct mount *mnt);\nstatic int do_umount(struct mount *mnt, int flags);\nstatic void mntput_no_expire(struct mount *mnt);\n"
+              if 'struct mount;' not in content:
+                  declarations = '\nstruct mount;\nstatic inline bool may_mount(void);\nstatic inline int check_mnt(struct mount *mnt);\nstatic int do_umount(struct mount *mnt, int flags);\nstatic void mntput_no_expire(struct mount *mnt);\n'
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
                       content = content[:pos] + declarations + content[pos:]
-                      with open(path, "w") as f:
+                      with open(path, 'w') as f:
                           f.write(content)
-                      print("[+] Added namespace forward declarations.")
+                      print('[+] Added namespace forward declarations.')
           EOF
 
           # 6. Fetch KernelSU-Next v3+
@@ -240,63 +237,61 @@ jobs:
           import os
           import re
 
-          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
-          path = os.path.join(workspace, "device_kernel/fs/devpts/inode.c")
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          path = os.path.join(workspace, 'device_kernel/fs/devpts/inode.c')
 
           if os.path.exists(path):
-              with open(path, "r") as f:
+              with open(path, 'r') as f:
                   content = f.read()
 
-              if "KSU_HANDLE_DEVPT_STUB" not in content:
-                  stub = "\n#ifndef KSU_HANDLE_DEVPT_STUB\n#define KSU_HANDLE_DEVPT_STUB\nstruct inode;\nstatic inline int ksu_handle_devpts(struct inode *inode) { return 0; }\n#endif\n"
-                  content = content.replace("extern int ksu_handle_devpts(struct inode*);", "/* extern int ksu_handle_devpts(struct inode*); */")
-                  content = content.replace("extern int ksu_handle_devpts(struct inode *inode);", "/* extern int ksu_handle_devpts(struct inode *inode); */")
+              if 'KSU_HANDLE_DEVPT_STUB' not in content:
+                  stub = '\n#ifndef KSU_HANDLE_DEVPT_STUB\n#define KSU_HANDLE_DEVPT_STUB\nstruct inode;\nstatic inline int ksu_handle_devpts(struct inode *inode) { return 0; }\n#endif\n'
+                  content = content.replace('extern int ksu_handle_devpts(struct inode*);', '/* extern int ksu_handle_devpts(struct inode*); */')
+                  content = content.replace('extern int ksu_handle_devpts(struct inode *inode);', '/* extern int ksu_handle_devpts(struct inode *inode); */')
 
                   matches = list(re.finditer(r'^#include\s+["<].*?[">]', content, re.MULTILINE))
                   if matches:
                       pos = matches[-1].end()
                       content = content[:pos] + stub + content[pos:]
-                      with open(path, "w") as f:
+                      with open(path, 'w') as f:
                           f.write(content)
-                      print("[+] Injected compatible ksu_handle_devpts stub into fs/devpts/inode.c")
+                      print('[+] Injected compatible ksu_handle_devpts stub into fs/devpts/inode.c')
           EOF
 
           # 9. Patch SELinux hide
           python3 - << 'EOF'
           import os
 
-          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
           possible_paths = [
-              os.path.join(workspace, "device_kernel/drivers/kernelsu/feature/selinux_hide.c"),
-              os.path.join(workspace, "device_kernel/drivers/ksu/feature/selinux_hide.c"),
-              os.path.join(workspace, "device_kernel/drivers/kernelsu/selinux/selinux.h"),
-              os.path.join(workspace, "device_kernel/drivers/ksu/selinux/selinux.h")
+              os.path.join(workspace, 'device_kernel/drivers/kernelsu/feature/selinux_hide.c'),
+              os.path.join(workspace, 'device_kernel/drivers/ksu/feature/selinux_hide.c'),
+              os.path.join(workspace, 'device_kernel/drivers/kernelsu/selinux/selinux.h'),
+              os.path.join(workspace, 'device_kernel/drivers/ksu/selinux/selinux.h')
           ]
 
           for file_path in possible_paths:
               if os.path.exists(file_path):
-                  with open(file_path, "r") as f:
+                  with open(file_path, 'r') as f:
                       content = f.read()
 
                   updated = False
-                  if 'security_context_to_sid("u:r:ksu:s0"' in content:
-                      content = content.replace(
-                          'security_context_to_sid("u:r:ksu:s0"',
-                          'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-                      )
+                  target_1 = 'security_context_to_sid("u:r:ksu:s0"'
+                  replacement_1 = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+                  if target_1 in content:
+                      content = content.replace(target_1, replacement_1)
                       updated = True
 
-                  if 'security_context_to_sid("u:r:priv_app:s0:c512,c768"' in content:
-                      content = content.replace(
-                          'security_context_to_sid("u:r:priv_app:s0:c512,c768"',
-                          'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-                      )
+                  target_2 = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
+                  replacement_2 = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+                  if target_2 in content:
+                      content = content.replace(target_2, replacement_2)
                       updated = True
 
                   if updated:
-                      with open(file_path, "w") as f:
+                      with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f"[+] Successfully patched selinux signature in: {file_path}")
+                      print(f'[+] Successfully patched selinux signature in: {file_path}')
           EOF
 
       - name: Build Process
