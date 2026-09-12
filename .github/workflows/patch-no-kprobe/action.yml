@@ -22,37 +22,22 @@ runs:
           cp /tmp/Patches/syscall_hook_patches.sh ./
           bash syscall_hook_patches.sh ./
 
-          # Safe SELinux LSM Hook Injection via Python
-          python3 - << "EOF"
-import os, re
+          # Safe SELinux LSM Hook Injection via sed
+          HOOKS_FILE="security/selinux/hooks.c"
+          if [ -f "$HOOKS_FILE" ]; then
+            if ! grep -q "ksu_handle_execve" "$HOOKS_FILE"; then
+              sed -i '/static int selinux_bprm_set_creds(struct linux_binprm \*bprm)/{
+                N
+                /\\{/a \ \textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);
+              }' "$HOOKS_FILE" || true
+              echo "[+] Injected ksu_handle_execve into SELinux hooks."
+            fi
 
-hooks_path = "security/selinux/hooks.c"
-if os.path.exists(hooks_path):
-    with open(hooks_path, "r") as f:
-        content = f.read()
-
-    updated = False
-
-    if "ksu_handle_execve" not in content:
-        pattern = r"(static int selinux_bprm_set_creds\(struct linux_binprm \*bprm\)\s*\{)"
-        replacement = r"\1\n\textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);"
-        content, count = re.subn(pattern, replacement, content)
-        if count > 0:
-            updated = True
-            print("[+] Injected ksu_handle_execve into SELinux hooks.")
-
-    if "ksu_handle_prctl" not in content:
-        pattern = r"(static int selinux_task_prctl\(int option, unsigned long arg2, unsigned long arg3,\s*unsigned long arg4, unsigned long arg5\)\s*\{)"
-        replacement = r"\1\n\textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);"
-        content, count = re.subn(pattern, replacement, content)
-        if count > 0:
-            updated = True
-            print("[+] Injected ksu_handle_prctl into SELinux hooks.")
-
-    if updated:
-        with open(hooks_path, "w") as f:
-            f.write(content)
-EOF
+            if ! grep -q "ksu_handle_prctl" "$HOOKS_FILE"; then
+              sed -i '/static int selinux_task_prctl(int option,/a \ \textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);' "$HOOKS_FILE" || true
+              echo "[+] Injected ksu_handle_prctl into SELinux hooks."
+            fi
+          fi
 
           echo "[+] executed syscall hook successfully."
 
