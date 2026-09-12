@@ -110,6 +110,36 @@ jobs:
       - name: ⚙️ Get neccssary tools
         uses: ./.github/workflows/build-ready
 
+      - name: 🩹 Patch KernelSU SELinux Hide (5-arg fix)
+        run: |
+          python3 - << 'EOF'
+          import os, re
+
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          possible_paths = [
+              os.path.join(workspace, 'device_kernel/drivers/kernelsu/feature/selinux_hide.c'),
+              os.path.join(workspace, 'device_kernel/drivers/ksu/feature/selinux_hide.c'),
+              os.path.join(workspace, 'device_kernel/drivers/kernelsu/selinux/selinux.h'),
+              os.path.join(workspace, 'device_kernel/drivers/ksu/selinux/selinux.h')
+          ]
+
+          for file_path in possible_paths:
+              if os.path.exists(file_path):
+                  with open(file_path, 'r') as f:
+                      content = f.read()
+
+                  # Regex replaces security_context_to_sid("... with security_context_to_sid(&selinux_state, "...
+                  pattern = r'security_context_to_sid\s*\(\s*"(u:r:(?:ksu|priv_app)'
+                  replacement = r'security_context_to_sid(&selinux_state, "\1'
+
+                  new_content, count = re.subn(pattern, replacement, content)
+
+                  if count > 0:
+                      with open(file_path, 'w') as f:
+                          f.write(new_content)
+                      print(f'[+] Successfully applied {count} SELinux fix(es) in: {file_path}')
+          EOF
+
       - name: 🪝 Patch Kernel of SUSFS
         uses: ./.github/workflows/patch-susfs
 
