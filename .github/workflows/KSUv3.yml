@@ -151,7 +151,7 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Inject header and execution hook into fs/exec.c (Fixes C90 ISO error via block scoping)
+          # 4. Inject header and execution hook into fs/exec.c (Fixes C90 ISO error by placing after variable declarations)
           python3 - << 'EOF'
           import os
           import re
@@ -171,19 +171,31 @@ jobs:
                       pos = matches[-1].end()
                       content = content[:pos] + header + content[pos:]
 
-              # 2. Inject Execution Hook wrapped inside a dedicated block scope
+              # 2. Inject Execution Hook AFTER all variable declarations
               if "ksu_handle_execveat(&fd" not in content:
-                  # Wrapping in { ... } guarantees C90 compliance regardless of surrounding declarations
                   hook_code = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
                   
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
-                      # Find entry of do_execveat_common
-                      brace_pos = content.find("{", pos)
-                      if brace_pos != -1:
-                          # Inject immediately at opening brace of function body
-                          content = content[:brace_pos+1] + hook_code + content[brace_pos+1:]
-                          print("[+] Injected block-scoped ksu_handle_execveat into do_execveat_common.")
+                      # Find where the declarations end in do_execveat_common
+                      # Executable code in do_execveat_common begins at one of these standard statements
+                      targets = ["check_unsafe_exec", "unshare_files", "if (fd < 0)", "pathbuf = NULL;"]
+                      target_pos = -1
+                      
+                      for target in targets:
+                          found = content.find(target, pos)
+                          if found != -1:
+                              # Find the start of the line containing this target
+                              line_start = content.rfind("\n", pos, found)
+                              if line_start != -1:
+                                  target_pos = line_start + 1
+                                  break
+
+                      if target_pos != -1:
+                          content = content[:target_pos] + hook_code + content[target_pos:]
+                          print("[+] Injected ksu_handle_execveat after variable declarations.")
+                      else:
+                          print("[-] Warning: Could not find anchor for injection in do_execveat_common.")
 
               with open(path, "w") as f:
                   f.write(content)
