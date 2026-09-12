@@ -1,4 +1,4 @@
-name: KSU v3
+name: KSUv3
 
 on:
   workflow_call:
@@ -151,7 +151,7 @@ jobs:
           }
           rm -f raw_commit.patch core_hooks.patch
 
-          # 4. Inject header and execution hook into fs/exec.c (ISO C90 compliant)
+          # 4. Inject header and execution hook into fs/exec.c (Fixes ISO C90 error)
           python3 - << 'EOF'
           import os
           import re
@@ -171,6 +171,7 @@ jobs:
                       content = content[:pos] + header + content[pos:]
 
               if "ksu_handle_execveat(&fd" not in content:
+                  # Wrap hook in braces block to satisfy ISO C90 (-Wdeclaration-after-statement)
                   hook_code = "\n\t#ifdef CONFIG_KSU\n\t{\n\t\tksu_handle_execveat(&fd, &filename, (void *)&argv, (void *)&envp, &flags);\n\t}\n\t#endif\n"
                   pos = content.find("do_execveat_common(")
                   if pos != -1:
