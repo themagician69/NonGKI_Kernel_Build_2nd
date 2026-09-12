@@ -67,7 +67,7 @@ env:
   DROIDSPACES_ENABLE: "false" # if u need Droidspaces or LXC/Docker.
   NOMOUNT_ENABLE: "false" # if u need NoMount.
 
-  HOOK_METHOD: "syscall" # Manual hook method ->  syscall.
+  HOOK_METHOD: "manual" # Manual hook method for Non-GKI static builds.
 
   KERNEL_PATCH: "false" # If your kernel version is <= 4.9, you have the option of enabling the patch to patch the kernel_write and kernel_read functions.
 
@@ -110,39 +110,6 @@ jobs:
       - name: ⚙️ Get neccssary tools
         uses: ./.github/workflows/build-ready
 
-      - name: 🩹 Patch KernelSU SELinux Hide (5-arg fix)
-        run: |
-          python3 - << 'EOF'
-          import os
-
-          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
-          possible_paths = [
-              os.path.join(workspace, 'device_kernel/drivers/kernelsu/feature/selinux_hide.c'),
-              os.path.join(workspace, 'device_kernel/drivers/ksu/feature/selinux_hide.c'),
-              os.path.join(workspace, 'device_kernel/drivers/kernelsu/selinux/selinux.h'),
-              os.path.join(workspace, 'device_kernel/drivers/ksu/selinux/selinux.h')
-          ]
-
-          replacements = [
-              ('security_context_to_sid("u:r:ksu:s0"', 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'),
-              ('security_context_to_sid("u:r:priv_app', 'security_context_to_sid(&selinux_state, "u:r:priv_app')
-          ]
-
-          for file_path in possible_paths:
-              if os.path.exists(file_path):
-                  with open(file_path, 'r') as f:
-                      content = f.read()
-
-                  original_content = content
-                  for old, new in replacements:
-                      content = content.replace(old, new)
-
-                  if content != original_content:
-                      with open(file_path, 'w') as f:
-                          f.write(content)
-                      print(f'[+] Successfully applied SELinux fix in: {file_path}')
-          EOF
-
       - name: 🪝 Patch Kernel of SUSFS
         uses: ./.github/workflows/patch-susfs
 
@@ -151,10 +118,9 @@ jobs:
 
       - name: 🪛 Extra Kernel Options
         run: |
-          # Only ${{ env.DEVICE_NAME }} use it.
+          # Guarantee KernelSU is enabled in the beryllium merged config fragment
           cd $GITHUB_WORKSPACE/device_kernel
-
-          # Nothing
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
 
       - name: 🧰 Patch Kernel of Re:Kernel
         uses: ./.github/workflows/patch-rekernel
