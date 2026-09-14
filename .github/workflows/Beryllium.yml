@@ -10,7 +10,8 @@ env:
   DEVICE_CODENAME : "beryllium"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  EXTRA_CMDS : "LD=ld.lld"
+  # Added KSU_VERSION=33204 flag to force version code during make execution
+  EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
 
   KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
   KERNEL_BRANCH : "staging"
@@ -46,7 +47,7 @@ env:
   NEED_DTBO : false
   NEED_SAFE_DTBO : false
 
-  ROM_TEXT : "global"
+  ROM_TEXT : "KSUN33204"
 
   # Other env
   PYTHON_VERSION: "3"
@@ -118,6 +119,15 @@ jobs:
       - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
+
+          # Overwrite calculated git version code with 33204 in Kbuild
+          for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
+            if [ -f "$kbuild" ]; then
+              sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
+              sed -i 's/KSU_VERSION :=.*/KSU_VERSION := 33204/' "$kbuild"
+              echo "[+] Applied version 33204 override to $kbuild"
+            fi
+          done
 
           # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
