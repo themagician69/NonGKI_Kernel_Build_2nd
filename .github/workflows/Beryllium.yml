@@ -146,45 +146,48 @@ jobs:
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Unified SELinux Patch (Unindented to prevent Python IndentationError)
+          # Unified SELinux Patch using textwrap.dedent for YAML compliance
           python3 - << 'EOF'
-import os, glob
+          import textwrap
+          python_code = textwrap.dedent("""
+          import os, glob
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
 
-workspace = os.environ.get('GITHUB_WORKSPACE', '.')
-drivers_path = os.path.join(workspace, 'device_kernel/drivers')
+          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \\
+                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \\
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \\
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
 
-ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-            glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-            glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-            glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
+          for file_path in ksu_files:
+              if os.path.exists(file_path):
+                  with open(file_path, 'r') as f:
+                      content = f.read()
 
-for file_path in ksu_files:
-    if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
-            content = f.read()
+                  updated = False
 
-        updated = False
+                  if 'selinux_status_update_policyload(0)' in content:
+                      content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
+                      updated = True
 
-        if 'selinux_status_update_policyload(0)' in content:
-            content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
-            updated = True
+                  t1_old = 'security_context_to_sid("u:r:ksu:s0"'
+                  t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+                  if t1_old in content:
+                      content = content.replace(t1_old, t1_new)
+                      updated = True
 
-        t1_old = 'security_context_to_sid("u:r:ksu:s0"'
-        t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-        if t1_old in content:
-            content = content.replace(t1_old, t1_new)
-            updated = True
+                  t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
+                  t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+                  if t2_old in content:
+                      content = content.replace(t2_old, t2_new)
+                      updated = True
 
-        t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
-        t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-        if t2_old in content:
-            content = content.replace(t2_old, t2_new)
-            updated = True
-
-        if updated:
-            with open(file_path, 'w') as f:
-                f.write(content)
-            print(f'[+] Applied SELinux patches in: {file_path}')
+                  if updated:
+                      with open(file_path, 'w') as f:
+                          f.write(content)
+                      print(f'[+] Applied SELinux patches in: {file_path}')
+          """)
+          exec(python_code)
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
