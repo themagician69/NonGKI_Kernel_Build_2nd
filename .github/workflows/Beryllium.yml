@@ -10,7 +10,8 @@ env:
   DEVICE_CODENAME : "beryllium"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  EXTRA_CMDS : "LD=ld.lld"
+  # Added KSU_VERSION=33204 to force the correct version code during compilation
+  EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
 
   KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
   KERNEL_BRANCH : "staging"
