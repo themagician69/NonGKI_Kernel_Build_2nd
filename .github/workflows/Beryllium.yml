@@ -120,26 +120,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # 0. Ensure KernelSU legacy driver is present before patching
-          KSU_DIR=""
-          if [ -d "drivers/kernelsu" ]; then
-            KSU_DIR="drivers/kernelsu"
-          elif [ -d "drivers/ksu" ]; then
-            KSU_DIR="drivers/ksu"
-          else
-            echo "[+] KernelSU not found. Cloning KernelSU-Next (legacy branch)..."
-            git clone https://github.com/rifsds/KernelSU-Next.git -b legacy drivers/kernelsu
-            KSU_DIR="drivers/kernelsu"
-          fi
-
-          # 1. Fetch and execute keyring_patch.sh directly from repo
-          echo "[+] Fetching keyring_patch.sh from themagician69/NonGKI_Kernel_Build_2nd..."
-          curl -sL "https://raw.githubusercontent.com/themagician69/NonGKI_Kernel_Build_2nd/33204/Patches/keyring_patch.sh" -o /tmp/keyring_patch.sh
-          chmod +x /tmp/keyring_patch.sh
-
-          /tmp/keyring_patch.sh "$KSU_DIR"
-
-          # 2. Overwrite calculated git version code with 33204 in Kbuild
+          # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
               sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
@@ -148,19 +129,30 @@ jobs:
             fi
           done
 
-          # 3. Ensure Kconfig and Makefile entries are present with correct relative paths
-          KSU_SUBDIR=$(basename "$KSU_DIR")
-          if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
-            echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
-            echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
+          # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
+          if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
+            KSU_DIR=""
+            KSU_SUBDIR=""
+            if [ -d "drivers/kernelsu" ]; then
+              KSU_DIR="drivers/kernelsu"
+              KSU_SUBDIR="kernelsu"
+            elif [ -d "drivers/ksu" ]; then
+              KSU_DIR="drivers/ksu"
+              KSU_SUBDIR="ksu"
+            fi
+
+            if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
+              echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
+              echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
+            fi
+
+            if ! grep -q "$KSU_SUBDIR/" drivers/Makefile; then
+              echo "obj-y += $KSU_SUBDIR/" >> drivers/Makefile
+              echo "[+] Added obj-y += $KSU_SUBDIR/ to drivers/Makefile"
+            fi
           fi
 
-          if ! grep -q "$KSU_SUBDIR/" drivers/Makefile; then
-            echo "obj-y += $KSU_SUBDIR/" >> drivers/Makefile
-            echo "[+] Added obj-y += $KSU_SUBDIR/ to drivers/Makefile"
-          fi
-
-          # 4. Guarantee KernelSU is enabled across defconfig and fragments
+          # 2. Guarantee KernelSU is enabled across defconfig and fragments
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
