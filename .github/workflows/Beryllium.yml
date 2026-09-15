@@ -120,6 +120,18 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
+          # Fetch and apply pre-4.10 init keyring patch directly to kernel tree
+          echo "[+] Fetching pre-4.10 init_keyring patch..."
+          curl -sL "https://raw.githubusercontent.com/Fede2782/android_kernel_samsung_gta4xl/sep-14.5/ksu/0001-Enable-pre-4.10-init-keyring-also-on-4.14.patch" -o /tmp/init_keyring.patch
+
+          if patch -p1 --dry-run < /tmp/init_keyring.patch >/dev/null 2>&1; then
+            patch -p1 < /tmp/init_keyring.patch
+            echo "[+] Successfully patched kernel tree with pre-4.10 init_keyring."
+          else
+            echo "[!] Patch dry-run failed or already applied. Applying with -N..."
+            patch -N -p1 < /tmp/init_keyring.patch || true
+          fi
+
           # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
