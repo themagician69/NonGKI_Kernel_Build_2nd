@@ -30,6 +30,13 @@ runs:
 
         fi
 
+        # Disable Allowlist Workaround in defconfig to fix 4.9 ksud profile purges
+        DEFCONFIG_PATH="./arch/${KERNEL_ARCH}/configs/${DEFCONFIG_NAME}"
+        if [ -f "$DEFCONFIG_PATH" ]; then
+          sed -i 's/CONFIG_KSU_ALLOWLIST_WORKAROUND=y/# CONFIG_KSU_ALLOWLIST_WORKAROUND is not set/' "$DEFCONFIG_PATH"
+          echo "[+] Disabled CONFIG_KSU_ALLOWLIST_WORKAROUND in $DEFCONFIG_NAME"
+        fi
+
         # Check for static state in partial functions
         KERNEL_VERSION=$(head -n 3 Makefile | grep -E 'VERSION|PATCHLEVEL' | awk '{print $3}' | paste -sd '.')
         FIRST_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $1}')
