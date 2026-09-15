@@ -120,7 +120,18 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # Overwrite calculated git version code with 33204 in Kbuild
+          # 0. Fetch and execute keyring_patch.sh directly from repo
+          echo "[+] Fetching keyring_patch.sh from themagician69/NonGKI_Kernel_Build_2nd..."
+          curl -sL "https://raw.githubusercontent.com/themagician69/NonGKI_Kernel_Build_2nd/33204/Patches/keyring_patch.sh" -o /tmp/keyring_patch.sh
+          chmod +x /tmp/keyring_patch.sh
+
+          if [ -d "drivers/kernelsu" ]; then
+            /tmp/keyring_patch.sh drivers/kernelsu
+          elif [ -d "drivers/ksu" ]; then
+            /tmp/keyring_patch.sh drivers/ksu
+          fi
+
+          # 1. Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
               sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
@@ -129,7 +140,7 @@ jobs:
             fi
           done
 
-          # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
+          # 2. Ensure Kconfig and Makefile entries are present with correct relative paths
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
             KSU_DIR=""
             KSU_SUBDIR=""
@@ -152,7 +163,7 @@ jobs:
             fi
           fi
 
-          # 2. Guarantee KernelSU is enabled across defconfig and fragments
+          # 3. Guarantee KernelSU is enabled across defconfig and fragments
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
