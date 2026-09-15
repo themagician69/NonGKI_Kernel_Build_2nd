@@ -8,6 +8,36 @@ runs:
       run: |
         cd "$GITHUB_WORKSPACE/device_kernel"
 
+        # 1. Download the Pre-4.10 Init Keyring Patch
+        echo "[+] Downloading Pre-4.10 Init Keyring Patch..."
+        curl -sL "https://raw.githubusercontent.com/Fede2782/android_kernel_samsung_gta4xl/sep-14.5/ksu/0001-Enable-pre-4.10-init-keyring-also-on-4.14.patch" -o /tmp/keyring.patch
+
+        if [ -f "/tmp/keyring.patch" ]; then
+          # 2. Fix path mapping from kernel/ to drivers/kernelsu/
+          sed -i 's|a/kernel/|a/drivers/kernelsu/|g; s|b/kernel/|b/drivers/kernelsu/|g' /tmp/keyring.patch
+
+          # 3. Strip out the incompatible Makefile hunk so it only patches source/header files (.c/.h)
+          python3 - << 'EOF'
+          with open('/tmp/keyring.patch', 'r') as f:
+              lines = f.readlines()
+          new_lines = []
+          skip = False
+          for line in lines:
+              if 'diff --git' in line and ('Makefile' in line or 'Kbuild' in line):
+                  skip = True
+              elif 'diff --git' in line:
+                  skip = False
+              if not skip:
+                  new_lines.append(line)
+          with open('/tmp/keyring.patch', 'w') as f:
+              f.writelines(new_lines)
+          EOF
+
+          # 4. Apply the cleaned patch
+          echo "[+] Applying filtered Pre-4.10 Init Keyring Patch..."
+          patch -p1 < /tmp/keyring.patch || echo "[-] Patch apply returned non-zero, check hunks"
+        fi
+
         # Detect SuSFS is used to enable the SuSFS inline hook
         if [ "$SUSFS_ENABLE" = "true" ]; then
           # Core
@@ -22,29 +52,19 @@ runs:
           cp /tmp/Patches/syscall_hook_patches.sh ./
           bash syscall_hook_patches.sh ./
 
-          # Safe SELinux LSM Hook Injection via sed
-          HOOKS_FILE="security/selinux/hooks.c"
-          if [ -f "$HOOKS_FILE" ]; then
-            if ! grep -q "ksu_handle_execve" "$HOOKS_FILE"; then
-              sed -i '/static int selinux_bprm_set_creds(struct linux_binprm \*bprm)/{
-                N
-                /\\{/a \ \textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);
-              }' "$HOOKS_FILE" || true
-              echo "[+] Injected ksu_handle_execve into SELinux hooks."
-            fi
-
-            if ! grep -q "ksu_handle_prctl" "$HOOKS_FILE"; then
-              sed -i '/static int selinux_task_prctl(int option,/a \ \textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);' "$HOOKS_FILE" || true
-              echo "[+] Injected ksu_handle_prctl into SELinux hooks."
-            fi
-          fi
-
           echo "[+] executed syscall hook successfully."
 
         else
           echo "[-] please input a valid option!"
           exit 1
 
+        fi
+
+        # Disable Allowlist Workaround in defconfig to fix 4.9 ksud profile purges
+        DEFCONFIG_PATH="./arch/${KERNEL_ARCH}/configs/${DEFCONFIG_NAME}"
+        if [ -f "$DEFCONFIG_PATH" ]; then
+          sed -i 's/CONFIG_KSU_ALLOWLIST_WORKAROUND=y/# CONFIG_KSU_ALLOWLIST_WORKAROUND is not set/' "$DEFCONFIG_PATH"
+          echo "[+] Disabled CONFIG_KSU_ALLOWLIST_WORKAROUND in $DEFCONFIG_NAME"
         fi
 
         # Check for static state in partial functions
