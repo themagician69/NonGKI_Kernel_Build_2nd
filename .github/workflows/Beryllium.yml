@@ -10,7 +10,6 @@ env:
   DEVICE_CODENAME : "beryllium"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  # Added KSU_VERSION=33204 flag to force version code during make execution
   EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
 
   KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
@@ -47,7 +46,7 @@ env:
   NEED_DTBO : false
   NEED_SAFE_DTBO : false
 
-  ROM_TEXT : "KSUN33204"
+  ROM_TEXT : "global"
 
   # Other env
   PYTHON_VERSION: "3"
@@ -120,39 +119,18 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # 0. Locate KernelSU source directory (kernelsu or ksu) and inject Pre-4.10 Keyring Patch
-          KSU_DIR=""
-          KSU_SUBDIR=""
-          if [ -d "drivers/kernelsu" ]; then
-            KSU_DIR="drivers/kernelsu"
-            KSU_SUBDIR="kernelsu"
-          elif [ -d "drivers/ksu" ]; then
-            KSU_DIR="drivers/ksu"
-            KSU_SUBDIR="ksu"
-          fi
-
-          if [ -n "$KSU_DIR" ]; then
-            echo "[+] Injecting Pre-4.10 Init Keyring Patch into $KSU_DIR"
-            curl -sL "https://raw.githubusercontent.com/Fede2782/android_kernel_samsung_gta4xl/sep-14.5/ksu/0001-Enable-pre-4.10-init-keyring-also-on-4.14.patch" -o /tmp/keyring.patch
-            
-            # Map kernel/ paths directly to drivers/kernelsu/ to match the flat structure
-            sed -i 's|a/kernel/|a/drivers/kernelsu/|g; s|b/kernel/|b/drivers/kernelsu/|g' /tmp/keyring.patch
-            
-            # Apply patch from root device_kernel folder
-            patch -p1 < /tmp/keyring.patch || echo "[-] Patch apply returned non-zero, check hunks"
-          fi
-
-          # Overwrite calculated git version code with 33204 in Kbuild
-          for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
-            if [ -f "$kbuild" ]; then
-              sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
-              sed -i 's/KSU_VERSION :=.*/KSU_VERSION := 33204/' "$kbuild"
-              echo "[+] Applied version 33204 override to $kbuild"
-            fi
-          done
-
           # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
-          if [ -n "$KSU_DIR" ]; then
+          if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
+            KSU_DIR=""
+            KSU_SUBDIR=""
+            if [ -d "drivers/kernelsu" ]; then
+              KSU_DIR="drivers/kernelsu"
+              KSU_SUBDIR="kernelsu"
+            elif [ -d "drivers/ksu" ]; then
+              KSU_DIR="drivers/ksu"
+              KSU_SUBDIR="ksu"
+            fi
+
             if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
               echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
               echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
@@ -168,47 +146,45 @@ jobs:
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Unified SELinux Patch: Fixes both security_context_to_sid and selinux_status_update_policyload
+          # Unified SELinux Patch (Unindented to prevent Python IndentationError)
           python3 - << 'EOF'
-          import os, glob
+import os, glob
 
-          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
-          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
+workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+drivers_path = os.path.join(workspace, 'device_kernel/drivers')
 
-          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
+ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
+            glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
+            glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
+            glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
 
-          for file_path in ksu_files:
-              if os.path.exists(file_path):
-                  with open(file_path, 'r') as f:
-                      content = f.read()
+for file_path in ksu_files:
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            content = f.read()
 
-                  updated = False
+        updated = False
 
-                  # 1. Fix selinux_status_update_policyload (1 arg -> 2 args)
-                  if 'selinux_status_update_policyload(0)' in content:
-                      content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
-                      updated = True
+        if 'selinux_status_update_policyload(0)' in content:
+            content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
+            updated = True
 
-                  # 2. Fix security_context_to_sid (4 args -> 5 args)
-                  t1_old = 'security_context_to_sid("u:r:ksu:s0"'
-                  t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-                  if t1_old in content:
-                      content = content.replace(t1_old, t1_new)
-                      updated = True
+        t1_old = 'security_context_to_sid("u:r:ksu:s0"'
+        t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+        if t1_old in content:
+            content = content.replace(t1_old, t1_new)
+            updated = True
 
-                  t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
-                  t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-                  if t2_old in content:
-                      content = content.replace(t2_old, t2_new)
-                      updated = True
+        t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
+        t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+        if t2_old in content:
+            content = content.replace(t2_old, t2_new)
+            updated = True
 
-                  if updated:
-                      with open(file_path, 'w') as f:
-                          f.write(content)
-                      print(f'[+] Applied SELinux patches in: {file_path}')
+        if updated:
+            with open(file_path, 'w') as f:
+                f.write(content)
+            print(f'[+] Applied SELinux patches in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
