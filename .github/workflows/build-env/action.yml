@@ -63,12 +63,7 @@ runs:
         if: env.FREE_MORE_SPACE == 'true' && env.SYSTEM_VERSION == 'newer' || env.SYSTEM_VERSION == 'older'
         uses: jlumbroso/free-disk-space@main
         with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
           tool-cache: true
-
-          # all of these default to true, but feel free to set to
-          # "false" if necessary for your workflow
           android: false
           dotnet: true
           haskell: true
@@ -86,22 +81,16 @@ runs:
       - name: Move Patch and Tools
         shell: bash
         run: |
-          # Move patch folder to tmp
           mv $GITHUB_WORKSPACE/Patches /tmp/
-
-          # Set curlx
           mv $GITHUB_WORKSPACE/Bin /tmp/
           chmod 777 /tmp/Bin/curlx.sh
           echo "CURLX=/tmp/Bin/curlx.sh" >> $GITHUB_ENV
-
-          # Copy Shell
           cp /tmp/Bin/found_gcc.sh ./
 
       - name: Install necessary packages
         shell: bash
         run: |
           if [ "${{ env.SYSTEM_VERSION }}" == "oldest" ]; then
-            # Tzdata
             TZ=America/Los_Angeles
             ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime
             echo "$TZ" > /etc/timezone
@@ -115,20 +104,12 @@ runs:
             echo "::endgroup::"
             echo "[+] The base packages is installed."
 
-            # Install Coccinelle
-            echo "::group::[+] Starting build coccinelle..."
-            apt-get install pkg-config ocaml-nox ocaml-findlib autoconf libpcre3-dev python3-dev menhir libparmap-ocaml-dev libpcre-ocaml-dev -y
-            ${{ env.CURLX }} "https://coccinelle.gitlabpages.inria.fr/website/distrib/coccinelle-1.3.tar.gz" "coccinelle.tar.gz"
-            tar zxf coccinelle.tar.gz
-            cd coccinelle-1.3
-            ./autogen
-            ./configure
-            make
-            make install
+            # Install Coccinelle via APT
+            echo "::group::[+] Starting install coccinelle..."
+            apt-get install -y coccinelle
             echo "::endgroup::"
             echo "[+] Coccinelle is installed."
 
-            # Get MKDTBO tool to System
             mkdir $GITHUB_WORKSPACE/mkdtbo
             cd $GITHUB_WORKSPACE/mkdtbo
             ${{ env.CURLX }} https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/main/utils/src.tar.gz src.tar.gz
@@ -143,17 +124,14 @@ runs:
                 rm -rf /usr/bin/python
                 ln -s /usr/bin/python3 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
-
             elif [ "${{ env.PYTHON_VERSION }}" == "2" ]; then
                 apt install python2 -y
                 rm -rf /usr/bin/python
                 ln -s /usr/bin/python2.7 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
-
             else
                 echo "[-] You need choose a vaild python version!"
                 false
-
             fi
 
           elif [ "${{ env.SYSTEM_VERSION }}" == "older" ]; then
@@ -165,20 +143,12 @@ runs:
             echo "::endgroup::"
             echo "[+] The base packages is installed."
 
-            # Install Coccinelle
-            echo "::group::[+] Starting build coccinelle..."
-            sudo apt-get install pkg-config ocaml-nox ocaml-findlib autoconf libpcre3-dev python3-dev menhir libparmap-ocaml-dev libpcre-ocaml-dev -y
-            ${{ env.CURLX }} "https://coccinelle.gitlabpages.inria.fr/website/distrib/coccinelle-1.3.tar.gz" "coccinelle.tar.gz"
-            tar zxf coccinelle.tar.gz
-            cd coccinelle-1.3
-            ./autogen
-            ./configure
-            make
-            sudo make install
+            # Install Coccinelle via APT
+            echo "::group::[+] Starting install coccinelle..."
+            sudo apt-get install -y coccinelle
             echo "::endgroup::"
             echo "[+] Coccinelle is installed."
 
-            # Get MKDTBO tool to System
             mkdir $GITHUB_WORKSPACE/mkdtbo
             cd $GITHUB_WORKSPACE/mkdtbo
             ${{ env.CURLX }} https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/main/utils/src.tar.gz src.tar.gz
@@ -193,17 +163,14 @@ runs:
                 sudo rm -rf /usr/bin/python
                 sudo ln -s /usr/bin/python3 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
-
             elif [ "${{ env.PYTHON_VERSION }}" == "2" ]; then
                 sudo apt install python2 -y
                 sudo rm -rf /usr/bin/python
                 sudo ln -s /usr/bin/python2.7 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
-
             else
                 echo "[-] You need choose a vaild python version!"
                 false
-
             fi
 
           elif [ "${{ env.SYSTEM_VERSION }}" == "newer" ]; then
@@ -214,25 +181,16 @@ runs:
             echo "::endgroup::"
             echo "[+] The base packages is installed."
 
-            # Install Coccinelle
-            echo "::group::[+] Starting build coccinelle..."
-            sudo apt-get install pkg-config ocaml-nox ocaml-findlib autoconf libpcre3-dev python3-dev menhir libparmap-ocaml-dev libpcre-ocaml-dev -y
-            ${{ env.CURLX }} "https://coccinelle.gitlabpages.inria.fr/website/distrib/coccinelle-1.3.tar.gz" "coccinelle.tar.gz"
-            tar zxf coccinelle.tar.gz
-            cd coccinelle-1.3
-            ./autogen
-            ./configure
-            make
-            sudo make install
+            # Install Coccinelle via APT
+            echo "::group::[+] Starting install coccinelle..."
+            sudo apt-get install -y coccinelle
             echo "::endgroup::"
             echo "[+] Coccinelle is installed."
 
-            # Install Libtinfo5
             ${{ env.CURLX }} https://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb libtinfo5.deb
             sudo apt install ./libtinfo5.deb
             rm -f libtinfo5.deb
 
-            # Get MKDTBO tool to System
             mkdir $GITHUB_WORKSPACE/mkdtbo
             cd $GITHUB_WORKSPACE/mkdtbo
             ${{ env.CURLX }} https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/main/utils/src.tar.gz src.tar.gz
@@ -247,7 +205,6 @@ runs:
                 sudo rm -rf /usr/bin/python
                 sudo ln -s /usr/bin/python3 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
-
             elif [ "${{ env.PYTHON_VERSION }}" == "2" ]; then
                 echo "::group::[+] Starting build Python 2..."
                 wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
@@ -263,11 +220,9 @@ runs:
                 rm -rf Python-2.7.18 Python-2.7.18.tgz
                 echo "::endgroup::"
                 echo "[+] Python version: $(python -V)"
-
             else
                 echo "[-] You need choose a vaild python version!"
                 false
-
             fi
 
           elif [ "${{ env.SYSTEM_VERSION }}" == "arch" ]; then
@@ -278,7 +233,6 @@ runs:
             echo "::endgroup::"
             echo "[+] The base packages is installed."
 
-            # Install Coccinelle
             echo "::group::[+] Starting install coccinelle..."
             echo -e "\n[archlinuxcn]\nServer = https://repo.archlinuxcn.org/\$arch" >> /etc/pacman.conf
             pacman -Syy
@@ -287,7 +241,6 @@ runs:
             echo "::endgroup::"
             echo "[+] Coccinelle is installed."
 
-            # Get MKDTBO tool to System
             mkdir $GITHUB_WORKSPACE/mkdtbo
             cd $GITHUB_WORKSPACE/mkdtbo
             ${{ env.CURLX }} https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/main/utils/src.tar.gz src.tar.gz
@@ -302,27 +255,22 @@ runs:
                 rm -rf /usr/bin/python
                 ln -s /usr/bin/python3 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
-
             elif [ "${{ env.PYTHON_VERSION }}" == "2" ]; then
                 pacman -S python2 --noconfirm
                 rm -rf /usr/bin/python
                 ln -s /usr/bin/python2.7 /usr/bin/python
                 echo "[+] Python version: $(python -V)"
                 false
-
             else
                 echo "[-] You need choose a vaild python version!"
                 false
-
             fi
 
-            # Update Rust Toolchain
             rustup default stable
 
           else
             echo "[-] Support is currently unavailable for the operating system you selected!"
             false
-
           fi
 
       - name: Install GNU GCC
@@ -340,7 +288,7 @@ runs:
             echo "::endgroup::"
             echo "[+] Get GNU GCC successfully."
 
-          elif [ "${{ env.SYSTEM_VERSION }}" == "arch" }} ]; then
+          elif [ "${{ env.SYSTEM_VERSION }}" == "arch" ]; then
             echo "::group::[+] Starting install GNU GCC..."
             pacman -S aarch64-linux-gnu-binutils aarch64-linux-gnu-gcc aarch64-linux-gnu-linux-api-headers aarch64-linux-gnu-glibc --noconfirm
             pacman -S arm-linux-gnueabihf-binutils arm-linux-gnueabihf-gcc arm-linux-gnueabihf-linux-api-headers arm-linux-gnueabihf-glibc --noconfirm
@@ -354,7 +302,6 @@ runs:
           else
             echo "[-] Support is currently unavailable for the operating system you selected!"
             false
-
           fi
 
       - name: Set Compile Environment
@@ -362,7 +309,6 @@ runs:
         run: |
           cd $GITHUB_WORKSPACE
 
-          # Set GCC
           if [[ "${{ env.CLANG_SOURCE }}" == *proton* ]]; then
             echo "[+] Detected Proton Clang. Automatically Configure GCC."
             echo "GCC_64=CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
@@ -379,27 +325,22 @@ runs:
 
             if [[ "${{ env.GCC_64_SOURCE }}" == *".git" ]]; then
               git clone "${{ env.GCC_64_SOURCE }}" -b "${{ env.GCC_64_BRANCH }}" gcc-64 --depth=1
-
             elif [[ "${{ env.GCC_64_SOURCE }}" == *'.tar.gz' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_64_SOURCE }}" gcc-64.tar.gz
               mkdir gcc-64
               tar -C gcc-64/ -zxf gcc-64.tar.gz
-
             elif [[ "${{ env.GCC_64_SOURCE }}" == *'.tar.xz' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_64_SOURCE }}" gcc-64.tar.xz
               mkdir gcc-64
               tar -C gcc-64/ -xf gcc-64.tar.xz --strip-components 1
-
             elif [[ "${{ env.GCC_64_SOURCE }}" == *'.xz' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_64_SOURCE }}" gcc-64.xz
               mkdir gcc-64
               tar -C gcc-64/ -xf gcc-64.xz --strip-components 1
-
             elif [[ "${{ env.GCC_64_SOURCE }}" == *'.zip' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_64_SOURCE }}" gcc-64.zip
               mkdir gcc-64
               unzip gcc-64.zip -d gcc-64/
-
             else
                 echo "::endgroup::"
                 echo "[-] Please input a valid GCC link!"
@@ -413,27 +354,22 @@ runs:
 
             if [[ "${{ env.GCC_32_SOURCE }}" == *".git" ]]; then
               git clone "${{ env.GCC_32_SOURCE }}" -b "${{ env.GCC_32_BRANCH }}" gcc-32 --depth=1
-
             elif [[ "${{ env.GCC_32_SOURCE }}" == *'.tar.gz' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_32_SOURCE }}" gcc-32.tar.gz
               mkdir gcc-32
               tar -C gcc-32/ -zxf gcc-32.tar.gz
-
             elif [[ "${{ env.GCC_32_SOURCE }}" == *'.tar.xz' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_32_SOURCE }}" gcc-32.tar.xz
               mkdir gcc-32
               tar -C gcc-32/ -xf gcc-32.tar.xz --strip-components 1
-
             elif [[ "${{ env.GCC_32_SOURCE }}" == *'.xz' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_32_SOURCE }}" gcc-32.xz
               mkdir gcc-32
               tar -C gcc-32/ -xf gcc-32.xz --strip-components 1
-
             elif [[ "${{ env.GCC_32_SOURCE }}" == *'.zip' ]]; then
               ${{ env.CURLX }} "${{ env.GCC_32_SOURCE }}" gcc-32.zip
               mkdir gcc-32
               unzip gcc-32.zip -d gcc-32/
-
             else
                 echo "::endgroup::"
                 echo "[-] Please input a valid GCC link!"
@@ -445,38 +381,31 @@ runs:
 
           fi
 
-          # Set Clang
           if [[ -z "${{ env.CLANG_SOURCE }}" ]]; then
             echo "[-] GCC is not configured, Skipped."
-
           else
             echo "::group::[+] Getting Clang..."
 
             if [[ "${{ env.CLANG_SOURCE }}" == *".git" ]]; then
                 git clone "${{ env.CLANG_SOURCE }}" -b "${{ env.CLANG_BRANCH }}" clang-custom --depth=1
-
             elif [[ "${{ env.CLANG_SOURCE }}" == *'.tar.gz' ]]; then
                 ${{ env.CURLX }} "${{ env.CLANG_SOURCE }}" clang.tar.gz
                 mkdir clang-custom
                 tar -C clang-custom/ -zxf clang.tar.gz
-
             elif [[ "${{ env.CLANG_SOURCE }}" == *'.tar.xz' ]]; then
                 ${{ env.CURLX }} "${{ env.CLANG_SOURCE }}" clang.tar.xz
                 mkdir clang-custom
                 tar -C clang-custom/ -xf clang.tar.xz --strip-components 1
-
             elif [[ "${{ env.CLANG_SOURCE }}" == *'.zip' ]]; then
                 ${{ env.CURLX }} "${{ env.CLANG_SOURCE }}" clang.zip
                 mkdir clang-custom
                 unzip clang.zip -d clang-custom/
-
             elif [[ "${{ env.CLANG_SOURCE }}" == *"antman" ]]; then
                 mkdir clang-custom
                 cd clang-custom
                 ${{ env.CURLX }} "${{ env.CLANG_SOURCE }}" antman
                 chmod +x antman
                 bash antman -S=10032024
-
             elif [[ "${{ env.CLANG_SOURCE }}" == *"android.googlesource.com"* ]]; then
                 git clone "${{ env.CLANG_SOURCE }}" -b "${{ env.CLANG_BRANCH }}" clang-custom --depth=1
                 SUBDIR=$(find clang-custom -maxdepth 1 -type d -name 'clang-r*' | head -n 1)
@@ -484,7 +413,6 @@ runs:
                 if [ -n "$SUBDIR" ]; then
                     mv "$SUBDIR"/* clang-custom/
                 fi
-
             else
                 echo "::endgroup::"
                 echo "[-] Please input vaild Clang link!"
@@ -492,5 +420,4 @@ runs:
             fi
 
             echo "::endgroup::"
-
           fi
