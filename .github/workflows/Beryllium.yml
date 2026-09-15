@@ -120,23 +120,6 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # 0. Locate KernelSU source directory (kernelsu or ksu) and inject Pre-4.10 Keyring Patch
-          KSU_DIR=""
-          KSU_SUBDIR=""
-          if [ -d "drivers/kernelsu" ]; then
-            KSU_DIR="drivers/kernelsu"
-            KSU_SUBDIR="kernelsu"
-          elif [ -d "drivers/ksu" ]; then
-            KSU_DIR="drivers/ksu"
-            KSU_SUBDIR="ksu"
-          fi
-
-          if [ -n "$KSU_DIR" ]; then
-            echo "[+] Injecting Pre-4.10 Init Keyring Patch into $KSU_DIR"
-            curl -sL "https://raw.githubusercontent.com/Fede2782/android_kernel_samsung_gta4xl/sep-14.5/ksu/0001-Enable-pre-4.10-init-keyring-also-on-4.14.patch" -o /tmp/keyring.patch
-            git apply --directory="$KSU_DIR" /tmp/keyring.patch || patch -p1 -d "$KSU_DIR" < /tmp/keyring.patch || echo "[-] Patch apply returned non-zero, check hunks"
-          fi
-
           # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
@@ -147,7 +130,17 @@ jobs:
           done
 
           # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
-          if [ -n "$KSU_DIR" ]; then
+          if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
+            KSU_DIR=""
+            KSU_SUBDIR=""
+            if [ -d "drivers/kernelsu" ]; then
+              KSU_DIR="drivers/kernelsu"
+              KSU_SUBDIR="kernelsu"
+            elif [ -d "drivers/ksu" ]; then
+              KSU_DIR="drivers/ksu"
+              KSU_SUBDIR="ksu"
+            fi
+
             if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
               echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
               echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
