@@ -8,43 +8,46 @@ runs:
       run: |
         cd "$GITHUB_WORKSPACE/device_kernel"
 
-        # 1. Apply Pre-4.10 Init Keyring Patches Inline
-        echo "[+] Applying Pre-4.10 Init Keyring Patches inline..."
-        for dir in drivers/kernelsu drivers/ksu; do
-            if [ -d "$dir" ]; then
-                for file in "$dir/core_hook.c" "$dir/kernel_compat.c" "$dir/kernel_compat.h"; do
-                    if [ -f "$file" ]; then
-                        sed -i 's/#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)/#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)/g' "$file"
-                        echo "[+] Patched $file for keyring compatibility."
-                    fi
-                done
-            fi
-        done
-
-        # 2. Detect and execute SuSFS or Syscall hooks from /tmp/Patches
+        # Detect SuSFS is used to enable the SuSFS inline hook
         if [ "$SUSFS_ENABLE" = "true" ]; then
+          # Core
           cp /tmp/Patches/susfs_inline_hook_patches.sh ./
           bash susfs_inline_hook_patches.sh ./
-          echo "[+] Executed SuSFS inline hook successfully."
 
+          echo "[+] executed SuSFS inline hook successfully."
+
+        # Check syscall hook
         elif [ "$HOOK_METHOD" = "syscall" ]; then
+          # Core
           cp /tmp/Patches/syscall_hook_patches.sh ./
           bash syscall_hook_patches.sh ./
-          echo "[+] Executed syscall hook successfully."
+
+          # Safe SELinux LSM Hook Injection via sed
+          HOOKS_FILE="security/selinux/hooks.c"
+          if [ -f "$HOOKS_FILE" ]; then
+            if ! grep -q "ksu_handle_execve" "$HOOKS_FILE"; then
+              sed -i '/static int selinux_bprm_set_creds(struct linux_binprm \*bprm)/{
+                N
+                /\\{/a \ \textern int ksu_handle_execve(void *bprm);\n\tksu_handle_execve(bprm);
+              }' "$HOOKS_FILE" || true
+              echo "[+] Injected ksu_handle_execve into SELinux hooks."
+            fi
+
+            if ! grep -q "ksu_handle_prctl" "$HOOKS_FILE"; then
+              sed -i '/static int selinux_task_prctl(int option,/a \ \textern int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5);\n\tksu_handle_prctl(option, arg2, arg3, arg4, arg5);' "$HOOKS_FILE" || true
+              echo "[+] Injected ksu_handle_prctl into SELinux hooks."
+            fi
+          fi
+
+          echo "[+] executed syscall hook successfully."
 
         else
-          echo "[-] Please input a valid option!"
+          echo "[-] please input a valid option!"
           exit 1
+
         fi
 
-        # 3. Disable Allowlist Workaround in defconfig to fix 4.9 ksud profile purges
-        DEFCONFIG_PATH="./arch/${KERNEL_ARCH}/configs/${DEFCONFIG_NAME}"
-        if [ -f "$DEFCONFIG_PATH" ]; then
-          sed -i 's/CONFIG_KSU_ALLOWLIST_WORKAROUND=y/# CONFIG_KSU_ALLOWLIST_WORKAROUND is not set/' "$DEFCONFIG_PATH"
-          echo "[+] Disabled CONFIG_KSU_ALLOWLIST_WORKAROUND in $DEFCONFIG_NAME"
-        fi
-
-        # 4. Check for static state in partial functions and fix SELinux hooks
+        # Check for static state in partial functions
         KERNEL_VERSION=$(head -n 3 Makefile | grep -E 'VERSION|PATCHLEVEL' | awk '{print $3}' | paste -sd '.')
         FIRST_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $1}')
         SECOND_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $2}')
@@ -61,8 +64,10 @@ runs:
         else
           if grep "const write_op" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
               sed -i 's/static ssize_t (\*const write_op\[\])(struct file \*, char \*, size_t)/ssize_t (*const write_op[])(struct file *, char *, size_t)/' security/selinux/selinuxfs.c
+
           else
               sed -i 's/static ssize_t (\*write_op\[\])(struct file \*, char \*, size_t)/ssize_t (*write_op[])(struct file *, char *, size_t)/' security/selinux/selinuxfs.c
+
           fi
           sed -i 's/^static const struct file_operations sel_handle_status_ops = {/const struct file_operations sel_handle_status_ops = {/' security/selinux/selinuxfs.c
 
@@ -72,6 +77,7 @@ runs:
               if grep -q "sel_mutex" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
                   sed -i 's/^static DEFINE_MUTEX(sel_mutex)/DEFINE_MUTEX(sel_mutex)/' security/selinux/selinuxfs.c
                   echo "[+] Removed sel_mutex static state."
+
               else
                   echo "[-] Your Kernel haven't sel_mutex, Skipped."
               fi
@@ -79,6 +85,7 @@ runs:
               if grep -q "selinux_status_page" "security/selinux/ss/status.c" >/dev/null 2>&1; then
                   sed -i 's/^static struct page \*selinux_status_page/struct page *selinux_status_page/' security/selinux/ss/status.c
                   echo "[+] Removed selinux_status_page static state."
+
               else
                   echo "[-] Your Kernel haven't selinux_status_page, Skipped."
               fi
@@ -86,6 +93,7 @@ runs:
               if grep -q "selinux_status_lock" "security/selinux/ss/status.c" >/dev/null 2>&1; then
                   sed -i 's/^static DEFINE_MUTEX(selinux_status_lock)/DEFINE_MUTEX(selinux_status_lock)/' security/selinux/ss/status.c
                   echo "[+] Removed selinux_status_lock static state."
+
               else
                   echo "[-] Your Kernel haven't selinux_status_lock, Skipped."
               fi
@@ -95,6 +103,7 @@ runs:
               if grep -q "selinux_status_page" "security/selinux/hooks.c" >/dev/null 2>&1; then
                   sed -i 's/^static struct security_operations selinux_ops/struct security_operations selinux_ops/' security/selinux/hooks.c
                   echo "[+] Removed selinux_ops static state."
+
               else
                   echo "[-] Your Kernel haven't selinux_ops, Skipped."
               fi
