@@ -135,10 +135,11 @@ jobs:
             echo "[+] Injecting Pre-4.10 Init Keyring Patch into $KSU_DIR"
             curl -sL "https://raw.githubusercontent.com/Fede2782/android_kernel_samsung_gta4xl/sep-14.5/ksu/0001-Enable-pre-4.10-init-keyring-also-on-4.14.patch" -o /tmp/keyring.patch
             
-            # Fix path mismatch for flat layout by stripping 'kernel/' prefix
-            sed -i 's|a/kernel/|a/|g; s|b/kernel/|b/|g' /tmp/keyring.patch
+            # Map kernel/ paths directly to drivers/kernelsu/ to match the flat structure
+            sed -i 's|a/kernel/|a/drivers/kernelsu/|g; s|b/kernel/|b/drivers/kernelsu/|g' /tmp/keyring.patch
             
-            git apply --directory="$KSU_DIR" /tmp/keyring.patch || patch -p1 -d "$KSU_DIR" < /tmp/keyring.patch || echo "[-] Patch apply returned non-zero, check hunks"
+            # Apply patch from root device_kernel folder
+            patch -p1 < /tmp/keyring.patch || echo "[-] Patch apply returned non-zero, check hunks"
           fi
 
           # Overwrite calculated git version code with 33204 in Kbuild
