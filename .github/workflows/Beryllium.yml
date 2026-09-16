@@ -35,8 +35,8 @@ env:
   KERNELSU_AUTO_GET : "true"
   KERNELSU_AUTO_FORK : "resukisu" # xxksu, rsuntk , next, resukisu and sukisu
 
-  SUSFS_ENABLE : true
-  SUSFS_FIXED : true
+  SUSFS_ENABLE : false
+  SUSFS_FIXED : false
 
   AK3_SOURCE : "https://github.com/Legendleo90/AnyKernel3.git"
   AK3_BRANCH : "electro"
@@ -46,7 +46,7 @@ env:
   NEED_DTBO : false
   NEED_SAFE_DTBO : false
 
-  ROM_TEXT : "RSukiGlohal"
+  ROM_TEXT : "RSukiGlobalNonSus"
 
   # Other env
   PYTHON_VERSION: "3" # Only 2(Ubuntu 22.04 and Ubuntu 20.04) or 3(Any OS Versions).
