@@ -10,6 +10,7 @@ env:
   DEVICE_CODENAME : "beryllium"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
+  # Added KSU_VERSION=33204 flag to force version code during make execution
   EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
 
   KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
@@ -119,36 +120,6 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # Locate KernelSU driver directory
-          KSU_DIR=""
-          if [ -d "drivers/kernelsu" ]; then
-            KSU_DIR="drivers/kernelsu"
-          elif [ -d "drivers/ksu" ]; then
-            KSU_DIR="drivers/ksu"
-          fi
-
-          if [ -n "$KSU_DIR" ]; then
-            echo "[+] Fetching Fede2782 init_keyring patch..."
-            curl -sL "https://raw.githubusercontent.com/Fede2782/android_kernel_samsung_gta4xl/sep-14.5/ksu/0001-Enable-pre-4.10-init-keyring-also-on-4.14.patch" -o /tmp/init_keyring.patch
-
-            # Adjust path headers to strip 'kernel/' prefix for layout compatibility
-            sed -i 's|a/kernel/|a/|g; s|b/kernel/|b/|g' /tmp/init_keyring.patch
-            sed -i 's|--- kernel/|--- |g; s|\+\+\+ kernel/|\+\+\+ |g' /tmp/init_keyring.patch
-
-            echo "[+] Applying patch inside $KSU_DIR..."
-            cd "$KSU_DIR"
-            if patch -p1 --dry-run < /tmp/init_keyring.patch >/dev/null 2>&1; then
-              patch -p1 < /tmp/init_keyring.patch
-              echo "[+] Successfully patched init_keyring inside $KSU_DIR!"
-            else
-              echo "[!] Dry-run failed, applying with -N..."
-              patch -N -p1 < /tmp/init_keyring.patch || true
-            fi
-            cd - > /dev/null
-          else
-            echo "[!] Warning: KernelSU directory not found for patching."
-          fi
-
           # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
@@ -160,16 +131,19 @@ jobs:
 
           # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
+            KSU_DIR=""
             KSU_SUBDIR=""
             if [ -d "drivers/kernelsu" ]; then
+              KSU_DIR="drivers/kernelsu"
               KSU_SUBDIR="kernelsu"
             elif [ -d "drivers/ksu" ]; then
+              KSU_DIR="drivers/ksu"
               KSU_SUBDIR="ksu"
             fi
 
             if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
-              echo "source \"drivers/$KSU_SUBDIR/Kconfig\"" >> drivers/Kconfig
-              echo "[+] Added drivers/$KSU_SUBDIR/Kconfig to drivers/Kconfig"
+              echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
+              echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
             fi
 
             if ! grep -q "$KSU_SUBDIR/" drivers/Makefile; then
