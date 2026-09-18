@@ -1,4 +1,4 @@
-name: KSU old
+name: Beryllium v1
 
 on:
   workflow_call:
@@ -47,7 +47,7 @@ env:
   NEED_DTBO : false
   NEED_SAFE_DTBO : false
 
-  ROM_TEXT : "any rom"
+  ROM_TEXT : "KSUNv1hz300"
 
   # Other env
   PYTHON_VERSION: "3"
