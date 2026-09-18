@@ -81,12 +81,19 @@ runs:
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
 
-            # Clean any old HZ configs and force inject CONFIG_KSU and HZ=300
-            sed -i '/CONFIG_HZ/d' out/.config
+            # Clean ONLY specific HZ choice options, then apply changes
+            sed -i '/CONFIG_HZ_100/d; /CONFIG_HZ_250/d; /CONFIG_HZ_300/d; /CONFIG_HZ_1000/d; /^CONFIG_HZ=/d' out/.config
             echo "CONFIG_KSU=y" >> out/.config
             echo "# CONFIG_HZ_100 is not set" >> out/.config
             echo "CONFIG_HZ_300=y" >> out/.config
             echo "CONFIG_HZ=300" >> out/.config
+
+            # Run olddefconfig again to normalize choices non-interactively
+            if [[ "$BUILD_CLANG" == "true" ]]; then
+                make CC="ccache clang" O=out ARCH="${{ env.KERNEL_ARCH }}" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} olddefconfig
+            else
+                make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
+            fi
           fi
 
           if [[ "${{ env.DROIDSPACES_ENABLE }}"  == "true" ]]; then
@@ -106,12 +113,19 @@ runs:
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
 
-            # Clean any old HZ configs and force inject CONFIG_KSU and HZ=300
-            sed -i '/CONFIG_HZ/d' out/.config
+            # Clean ONLY specific HZ choice options, then apply changes
+            sed -i '/CONFIG_HZ_100/d; /CONFIG_HZ_250/d; /CONFIG_HZ_300/d; /CONFIG_HZ_1000/d; /^CONFIG_HZ=/d' out/.config
             echo "CONFIG_KSU=y" >> out/.config
             echo "# CONFIG_HZ_100 is not set" >> out/.config
             echo "CONFIG_HZ_300=y" >> out/.config
             echo "CONFIG_HZ=300" >> out/.config
+
+            # Run olddefconfig again to normalize choices non-interactively
+            if [[ "$BUILD_CLANG" == "true" ]]; then
+                make CC="ccache clang" O=out ARCH="${{ env.KERNEL_ARCH }}" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} olddefconfig
+            else
+                make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
+            fi
           fi
 
           # KPM Detect
