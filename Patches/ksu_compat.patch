@@ -1,7 +1,7 @@
-diff --git a/allowlist.c b/allowlist.c
+diff --git a/drivers/kernelsu/allowlist.c b/drivers/kernelsu/allowlist.c
 index 9c9ba6e5..706b68b4 100644
---- a/allowlist.c
-+++ b/allowlist.c
+--- a/drivers/kernelsu/allowlist.c
++++ b/drivers/kernelsu/allowlist.c
 @@ -384,19 +384,19 @@ static void do_persistent_allow_list(struct callback_head *_cb)
  	mutex_lock(&allowlist_mutex);
  	struct file *fp =
@@ -50,17 +50,17 @@ index 9c9ba6e5..706b68b4 100644
  		pr_err("allowlist read version: %d failed\n", version);
  		goto exit;
  	}
-@@ -476,7,7 @@ void ksu_load_allow_list()
+@@ -476,7 +476,7 @@ void ksu_load_allow_list()
  	while (true) {
  		struct app_profile profile;
 -		ret = kernel_read(fp, &profile, sizeof(profile), &off);
 +		ret = ksu_kernel_read_compat(fp, &profile, sizeof(profile), &off);
  		if (ret <= 0) {
  			pr_info("load_allow_list read err: %zd\n", ret);
-diff --git a/apk_sign.c b/apk_sign.c
+diff --git a/drivers/kernelsu/apk_sign.c b/drivers/kernelsu/apk_sign.c
 index f444ab2b..55c3d40b 100644
---- a/apk_sign.c
-+++ b/apk_sign.c
+--- a/drivers/kernelsu/apk_sign.c
++++ b/drivers/kernelsu/apk_sign.c
 @@ -15,6 +15,7 @@
  #endif
  #include "apk_sign.h"
@@ -170,20 +170,20 @@ index f444ab2b..55c3d40b 100644
  		offset = 4;
  		if (id == 0x7109871au) {
  			v2_signing_blocks++;
-diff --git a/file_wrapper.c b/file_wrapper.c
+diff --git a/drivers/kernelsu/file_wrapper.c b/drivers/kernelsu/file_wrapper.c
 index 59b3ef80..6f94b9fd 100644
---- a/file_wrapper.c
-+++ b/file_wrapper.c
+--- a/drivers/kernelsu/file_wrapper.c
++++ b/drivers/kernelsu/file_wrapper.c
 @@ -13,6 +13,7 @@
  #include <linux/uaccess.h>
  #include <linux/version.h>
  #include <linux/mount.h>
 +#include <linux/module.h>
  #include "objsec.h"
-diff --git a/kernel_compat.c b/kernel_compat.c
+diff --git a/drivers/kernelsu/kernel_compat.c b/drivers/kernelsu/kernel_compat.c
 index 6fab9501..4deb4fb7 100644
---- a/kernel_compat.c
-+++ b/kernel_compat.c
+--- a/drivers/kernelsu/kernel_compat.c
++++ b/drivers/kernelsu/kernel_compat.c
 @@ -39,6 +39,27 @@ static int install_session_keyring(struct key *keyring)
  }
  #endif
@@ -276,10 +276,10 @@ index 6fab9501..4deb4fb7 100644
 +#endif
 +}
 +
-diff --git a/kernel_compat.h b/kernel_compat.h
+diff --git a/drivers/kernelsu/kernel_compat.h b/drivers/kernelsu/kernel_compat.h
 index 6d1181af..ebce4cbd 100644
---- a/kernel_compat.h
-+++ b/kernel_compat.h
+--- a/drivers/kernelsu/kernel_compat.h
++++ b/drivers/kernelsu/kernel_compat.h
 @@ -67,4 +67,15 @@ extern long strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr
  #endif
  #endif
@@ -297,10 +297,10 @@ index 6d1181af..ebce4cbd 100644
 +					size_t count, loff_t *pos);
 +
 +#endif // #ifndef __KSU_H_KERNEL_COMPAT
-diff --git a/selinux/rules.c b/selinux/rules.c
+diff --git a/drivers/kernelsu/selinux/rules.c b/drivers/kernelsu/selinux/rules.c
 index 7f99b50e..f216fe39 100644
---- a/selinux/rules.c
-+++ b/selinux/rules.c
+--- a/drivers/kernelsu/selinux/rules.c
++++ b/drivers/kernelsu/selinux/rules.c
 @@ -18,12 +18,16 @@ static struct policydb *get_policydb(void)
  {
  	struct policydb *db;
@@ -338,10 +338,10 @@ index 7f99b50e..f216fe39 100644
  	avc_ss_reset(0);
  	selnl_notify_policyload(0);
  	selinux_status_update_policyload(0);
-diff --git a/selinux/selinux.c b/selinux/selinux.c
+diff --git a/drivers/kernelsu/selinux/selinux.c b/drivers/kernelsu/selinux/selinux.c
 index 0fba6d3d..6e94afc9 100644
---- a/selinux/selinux.c
-+++ b/selinux/selinux.c
+--- a/drivers/kernelsu/selinux/selinux.c
++++ b/drivers/kernelsu/selinux/selinux.c
 @@ -1,6 +1,7 @@
  #include "selinux.h"
  #include "linux/cred.h"
@@ -350,10 +350,10 @@ index 0fba6d3d..6e94afc9 100644
  #include "objsec.h"
  #include "linux/version.h"
  #include "../klog.h" // IWYU pragma: keep
-diff --git a/throne_tracker.c b/throne_tracker.c
+diff --git a/drivers/kernelsu/throne_tracker.c b/drivers/kernelsu/throne_tracker.c
 index 94e0bac3..edd836e0 100644
---- a/throne_tracker.c
-+++ b/throne_tracker.c
+--- a/drivers/kernelsu/throne_tracker.c
++++ b/drivers/kernelsu/throne_tracker.c
 @@ -7,6 +7,7 @@
  #include <linux/version.h>
  #include "allowlist.h"
@@ -392,9 +392,9 @@ index 94e0bac3..edd836e0 100644
 +		count = ksu_kernel_read_compat(fp, buf, sizeof(buf), &line_start);
  		struct uid_data *data = kzalloc(sizeof(struct uid_data), GFP_ATOMIC);
  		if (!data) {
-diff --git a/util.c b/util.c
+diff --git a/drivers/kernelsu/util.c b/drivers/kernelsu/util.c
 index e815d47d..21e9cacb 100644
---- a/util.c
+--- a/drivers/kernelsu/util.c
 +++ b/util.c
 @@ -4,6 +4,7 @@
  #include <linux/pgtable.h>
