@@ -116,11 +116,11 @@ jobs:
       - name: 🔗 Patch for no-kprobe
         uses: ./.github/workflows/patch-no-kprobe
 
-      - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
+      - name: 🪛 Extra Kernel Options & Apply KernelSU Compat Patch
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
-          # Overwrite calculated git version code with 33204 in Kbuild
+          # 1. Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
               sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
@@ -129,7 +129,7 @@ jobs:
             fi
           done
 
-          # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
+          # 2. Ensure Kconfig and Makefile entries are present with correct relative paths
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
             KSU_DIR=""
             KSU_SUBDIR=""
@@ -152,52 +152,36 @@ jobs:
             fi
           fi
 
-          # 2. Guarantee KernelSU is enabled across defconfig and fragments
+          # 3. Guarantee KernelSU is enabled across defconfig and fragments
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Unified SELinux Patch: Fixes both security_context_to_sid and selinux_status_update_policyload
-          python3 - << 'EOF'
-          import os, glob
+          # 4. Download and apply the remote compatibility patch directly to KernelSU directory
+          PATCH_URL="https://raw.githubusercontent.com/themagician69/NonGKI_Kernel_Build_2nd/33204/Patches/ksu_compat.patch"
+          
+          KSU_TARGET_DIR=""
+          if [ -d "drivers/kernelsu" ]; then
+            KSU_TARGET_DIR="drivers/kernelsu"
+          elif [ -d "drivers/ksu" ]; then
+            KSU_TARGET_DIR="drivers/ksu"
+          fi
 
-          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
-          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
-
-          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
-
-          for file_path in ksu_files:
-              if os.path.exists(file_path):
-                  with open(file_path, 'r') as f:
-                      content = f.read()
-
-                  updated = False
-
-                  # 1. Fix selinux_status_update_policyload (1 arg -> 2 args)
-                  if 'selinux_status_update_policyload(0)' in content:
-                      content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
-                      updated = True
-
-                  # 2. Fix security_context_to_sid (4 args -> 5 args)
-                  t1_old = 'security_context_to_sid("u:r:ksu:s0"'
-                  t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-                  if t1_old in content:
-                      content = content.replace(t1_old, t1_new)
-                      updated = True
-
-                  t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
-                  t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-                  if t2_old in content:
-                      content = content.replace(t2_old, t2_new)
-                      updated = True
-
-                  if updated:
-                      with open(file_path, 'w') as f:
-                          f.write(content)
-                      print(f'[+] Applied SELinux patches in: {file_path}')
-          EOF
+          if [ -n "$KSU_TARGET_DIR" ]; then
+            echo "[+] Downloading patch from $PATCH_URL..."
+            curl -sSL "$PATCH_URL" -o ksu_compat.patch
+            echo "[+] Applying compatibility patch to $KSU_TARGET_DIR..."
+            patch -p1 -d "$KSU_TARGET_DIR" < ksu_compat.patch
+            
+            if [ $? -eq 0 ]; then
+              echo "[+] Patch applied successfully!"
+            else
+              echo "[-] Patch failed to apply cleanly."
+              exit 1
+            fi
+          else
+            echo "[-] KernelSU directory not found! Cannot apply patch."
+            exit 1
+          fi
 
       - name: 🧰 Patch Kernel of Re:Kernel
         uses: ./.github/workflows/patch-rekernel
