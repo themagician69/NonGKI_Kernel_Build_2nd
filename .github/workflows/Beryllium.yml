@@ -87,7 +87,7 @@ env:
   SKIP_PATCH: "false"
 
   BUILD_OTHER_CONFIG: "true"
-  MERGE_CONFIG_FILES: "vendor/xiaomi/beryllium.config,vendor/debugfs.config"
+  MERGE_CONFIG_FILES: "vendor/debugfs.config,vendor/xiaomi/beryllium.config"
 
   FREE_MORE_SPACE: "true"
 
@@ -121,7 +121,10 @@ jobs:
           CONFIG_FILE="arch/arm64/configs/vendor/xiaomi/beryllium.config"
           if [ -f "$CONFIG_FILE" ]; then
             echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
-            echo "[+] Successfully appended CONFIG_KSU=y to $CONFIG_FILE"
+            echo "# CONFIG_HZ_100 is not set" >> "$CONFIG_FILE"
+            echo "CONFIG_HZ_300=y" >> "$CONFIG_FILE"
+            echo "CONFIG_HZ=300" >> "$CONFIG_FILE"
+            echo "[+] Successfully appended CONFIG_KSU=y and HZ 300 to $CONFIG_FILE"
           else
             echo "[-] Warning: beryllium.config not found at $CONFIG_FILE"
           fi
