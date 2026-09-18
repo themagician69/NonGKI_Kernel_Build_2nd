@@ -81,8 +81,12 @@ runs:
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
 
-            # Force-inject CONFIG_KSU right after olddefconfig processing
+            # Clean any old HZ configs and force inject CONFIG_KSU and HZ=300
+            sed -i '/CONFIG_HZ/d' out/.config
             echo "CONFIG_KSU=y" >> out/.config
+            echo "# CONFIG_HZ_100 is not set" >> out/.config
+            echo "CONFIG_HZ_300=y" >> out/.config
+            echo "CONFIG_HZ=300" >> out/.config
           fi
 
           if [[ "${{ env.DROIDSPACES_ENABLE }}"  == "true" ]]; then
@@ -102,8 +106,12 @@ runs:
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
 
-            # Force-inject CONFIG_KSU right after olddefconfig processing
+            # Clean any old HZ configs and force inject CONFIG_KSU and HZ=300
+            sed -i '/CONFIG_HZ/d' out/.config
             echo "CONFIG_KSU=y" >> out/.config
+            echo "# CONFIG_HZ_100 is not set" >> out/.config
+            echo "CONFIG_HZ_300=y" >> out/.config
+            echo "CONFIG_HZ=300" >> out/.config
           fi
 
           # KPM Detect
