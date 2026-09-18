@@ -50,7 +50,7 @@ index 9c9ba6e5..706b68b4 100644
  		pr_err("allowlist read version: %d failed\n", version);
  		goto exit;
  	}
-@@ -476,7;7 @@ void ksu_load_allow_list()
+@@ -476,7,7 @@ void ksu_load_allow_list()
  	while (true) {
  		struct app_profile profile;
 -		ret = kernel_read(fp, &profile, sizeof(profile), &off);
