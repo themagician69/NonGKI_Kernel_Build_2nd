@@ -68,6 +68,7 @@ runs:
             for FILES in "${MERGE_CONFIG_FILES[@]}"; do
                 ./scripts/kconfig/merge_config.sh -O out/ -m out/.config arch/"${{ env.KERNEL_ARCH }}"/configs/$FILES
             done
+
             if [[ "$BUILD_CLANG" == "true" ]]; then
                 echo "==============================="
                 echo "=Execuate olddefconfig (Clang)="
@@ -79,6 +80,9 @@ runs:
                 echo "======================="
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
+
+            # Force-inject CONFIG_KSU right after olddefconfig processing
+            echo "CONFIG_KSU=y" >> out/.config
           fi
 
           if [[ "${{ env.DROIDSPACES_ENABLE }}"  == "true" ]]; then
@@ -97,6 +101,9 @@ runs:
                 echo "======================="
                 make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
             fi
+
+            # Force-inject CONFIG_KSU right after olddefconfig processing
+            echo "CONFIG_KSU=y" >> out/.config
           fi
 
           # KPM Detect
