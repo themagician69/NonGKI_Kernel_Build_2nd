@@ -156,7 +156,7 @@ jobs:
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Unified SELinux Patch: Fixes both security_context_to_sid and selinux_status_update_policyload
+          # Fully Conditionalized SELinux Patch (Fixes both compilation and runtime allowlist lookup)
           python3 - << 'EOF'
           import os, glob
 
@@ -175,28 +175,44 @@ jobs:
 
                   updated = False
 
-                  # 1. Fix selinux_status_update_policyload (1 arg -> 2 args)
+                  # 1. Fix selinux_status_update_policyload conditionally
                   if 'selinux_status_update_policyload(0)' in content:
-                      content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
+                      old_str = 'selinux_status_update_policyload(0)'
+                      new_str = '''#ifdef KSU_COMPAT_USE_SELINUX_STATE
+          	selinux_status_update_policyload(&selinux_state, 0);
+          #else
+          	selinux_status_update_policyload(0);
+          #endif'''
+                      content = content.replace(old_str, new_str)
                       updated = True
 
-                  # 2. Fix security_context_to_sid (4 args -> 5 args)
-                  t1_old = 'security_context_to_sid("u:r:ksu:s0"'
-                  t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-                  if t1_old in content:
-                      content = content.replace(t1_old, t1_new)
-                      updated = True
+                  # 2. Fix security_context_to_sid calls conditionally
+                  for prefix in ['"u:r:ksu:s0"', '"u:r:priv_app:s0:c512,c768"']:
+                      old_call = f'security_context_to_sid({prefix}'
+                      if old_call in content:
+                          new_call = f'''#ifdef KSU_COMPAT_USE_SELINUX_STATE
+          	security_context_to_sid(&selinux_state, {prefix}
+          #else
+          	security_context_to_sid({prefix}
+          #endif'''
+                          content = content.replace(old_call, new_call)
+                          updated = True
 
-                  t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
-                  t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-                  if t2_old in content:
-                      content = content.replace(t2_old, t2_new)
+                  # 3. Fix selinux_kernel_status_page conditionally
+                  target_old = 'struct page *real_page = selinux_kernel_status_page(&selinux_state);'
+                  target_new = '''#ifdef KSU_COMPAT_USE_SELINUX_STATE
+          	struct page *real_page = selinux_kernel_status_page(&selinux_state);
+          #else
+          	struct page *real_page = selinux_kernel_status_page();
+          #endif'''
+                  if target_old in content:
+                      content = content.replace(target_old, target_new)
                       updated = True
 
                   if updated:
                       with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f'[+] Applied SELinux patches in: {file_path}')
+                      print(f'[+] Applied conditional SELinux patches in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
@@ -216,3 +232,4 @@ jobs:
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
+        
