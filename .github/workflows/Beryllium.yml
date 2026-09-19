@@ -156,9 +156,9 @@ jobs:
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Fully Conditionalized SELinux Patch (Fixes both compilation and runtime allowlist lookup)
+          # Robust Regex-Based Conditional SELinux Patch
           python3 - << 'EOF'
-          import os, glob
+          import os, glob, re
 
           workspace = os.environ.get('GITHUB_WORKSPACE', '.')
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
@@ -175,44 +175,38 @@ jobs:
 
                   updated = False
 
-                  # 1. Fix selinux_status_update_policyload conditionally
-                  if 'selinux_status_update_policyload(0)' in content:
-                      old_str = 'selinux_status_update_policyload(0)'
-                      new_str = '''#ifdef KSU_COMPAT_USE_SELINUX_STATE
-          	selinux_status_update_policyload(&selinux_state, 0);
-          #else
-          	selinux_status_update_policyload(0);
-          #endif'''
-                      content = content.replace(old_str, new_str)
+                  # 1. Fix selinux_status_update_policyload
+                  if 'selinux_status_update_policyload(&selinux_state, 0)' in content:
+                      content = content.replace(
+                          'selinux_status_update_policyload(&selinux_state, 0);',
+                          '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tselinux_status_update_policyload(&selinux_state, 0);\n#else\n\tselinux_status_update_policyload(0);\n#endif'
+                      )
                       updated = True
 
-                  # 2. Fix security_context_to_sid calls conditionally
-                  for prefix in ['"u:r:ksu:s0"', '"u:r:priv_app:s0:c512,c768"']:
-                      old_call = f'security_context_to_sid({prefix}'
-                      if old_call in content:
-                          new_call = f'''#ifdef KSU_COMPAT_USE_SELINUX_STATE
-          	security_context_to_sid(&selinux_state, {prefix}
-          #else
-          	security_context_to_sid({prefix}
-          #endif'''
-                          content = content.replace(old_call, new_call)
-                          updated = True
+                  # 2. Fix security_context_to_sid calls dynamically (handles newlines/spaces)
+                  pattern = r'security_context_to_sid\s*\(\s*&selinux_state\s*,'
+                  if re.search(pattern, content):
+                      content = re.sub(
+                          pattern,
+                          '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tsecurity_context_to_sid(&selinux_state,\n#else\n\tsecurity_context_to_sid(\n#endif',
+                          content
+                      )
+                      updated = True
 
-                  # 3. Fix selinux_kernel_status_page conditionally
-                  target_old = 'struct page *real_page = selinux_kernel_status_page(&selinux_state);'
-                  target_new = '''#ifdef KSU_COMPAT_USE_SELINUX_STATE
-          	struct page *real_page = selinux_kernel_status_page(&selinux_state);
-          #else
-          	struct page *real_page = selinux_kernel_status_page();
-          #endif'''
-                  if target_old in content:
-                      content = content.replace(target_old, target_new)
+                  # 3. Fix selinux_kernel_status_page
+                  pattern_status = r'selinux_kernel_status_page\s*\(\s*&selinux_state\s*\)'
+                  if re.search(pattern_status, content):
+                      content = re.sub(
+                          pattern_status,
+                          '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tselinux_kernel_status_page(&selinux_state)\n#else\n\tselinux_kernel_status_page()\n#endif',
+                          content
+                      )
                       updated = True
 
                   if updated:
                       with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f'[+] Applied conditional SELinux patches in: {file_path}')
+                      print(f'[+] Robust SELinux patch applied to: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
@@ -232,4 +226,3 @@ jobs:
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
-        
