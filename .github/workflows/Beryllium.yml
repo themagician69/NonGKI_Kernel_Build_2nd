@@ -156,9 +156,13 @@ jobs:
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Robust Regex-Based Conditional SELinux Patch
+          # Define KSU_COMPAT_USE_SELINUX_STATE flag for compiler
+          echo "ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE" >> drivers/kernelsu/Makefile 2>/dev/null || true
+          echo "ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE" >> drivers/ksu/Makefile 2>/dev/null || true
+
+          # Precise Statement-Level SELinux Patch
           python3 - << 'EOF'
-          import os, glob, re
+          import os, glob
 
           workspace = os.environ.get('GITHUB_WORKSPACE', '.')
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
@@ -175,38 +179,18 @@ jobs:
 
                   updated = False
 
-                  # 1. Fix selinux_status_update_policyload
-                  if 'selinux_status_update_policyload(&selinux_state, 0)' in content:
-                      content = content.replace(
-                          'selinux_status_update_policyload(&selinux_state, 0);',
-                          '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tselinux_status_update_policyload(&selinux_state, 0);\n#else\n\tselinux_status_update_policyload(0);\n#endif'
-                      )
-                      updated = True
-
-                  # 2. Fix security_context_to_sid calls dynamically (handles newlines/spaces)
-                  pattern = r'security_context_to_sid\s*\(\s*&selinux_state\s*,'
-                  if re.search(pattern, content):
-                      content = re.sub(
-                          pattern,
-                          '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tsecurity_context_to_sid(&selinux_state,\n#else\n\tsecurity_context_to_sid(\n#endif',
-                          content
-                      )
-                      updated = True
-
-                  # 3. Fix selinux_kernel_status_page
-                  pattern_status = r'selinux_kernel_status_page\s*\(\s*&selinux_state\s*\)'
-                  if re.search(pattern_status, content):
-                      content = re.sub(
-                          pattern_status,
-                          '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tselinux_kernel_status_page(&selinux_state)\n#else\n\tselinux_kernel_status_page()\n#endif',
-                          content
-                      )
+                  # Fix selinux_kernel_status_page cleanly at statement level
+                  old_status = 'struct page *real_page = selinux_kernel_status_page(&selinux_state);'
+                  new_status = '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tstruct page *real_page = selinux_kernel_status_page(&selinux_state);\n#else\n\tstruct page *real_page = selinux_kernel_status_page();\n#endif'
+                  
+                  if old_status in content:
+                      content = content.replace(old_status, new_status)
                       updated = True
 
                   if updated:
                       with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f'[+] Robust SELinux patch applied to: {file_path}')
+                      print(f'[+] Statement-level patch applied to: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
