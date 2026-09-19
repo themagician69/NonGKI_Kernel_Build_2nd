@@ -152,15 +152,16 @@ jobs:
             fi
           fi
 
-          # 2. Guarantee KernelSU is enabled across defconfig and fragments
+          # 2. Guarantee KernelSU and SELinux state configs across defconfigs
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
+          echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
+          echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
 
-          # Define KSU_COMPAT_USE_SELINUX_STATE flag for compiler
-          echo "ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE" >> drivers/kernelsu/Makefile 2>/dev/null || true
-          echo "ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE" >> drivers/ksu/Makefile 2>/dev/null || true
+          # 3. Force -DKSU_COMPAT_USE_SELINUX_STATE into all KSU Makefiles & Kbuild files
+          find drivers/kernelsu drivers/ksu -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sh -c 'echo "ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE" >> "$1"' _ {} \;
 
-          # Precise Statement-Level SELinux Patch
+          # Clean Python Script to fix selinux_hide.c safely
           python3 - << 'EOF'
           import os, glob
 
@@ -168,9 +169,7 @@ jobs:
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
 
           ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True)
 
           for file_path in ksu_files:
               if os.path.exists(file_path):
@@ -179,18 +178,25 @@ jobs:
 
                   updated = False
 
-                  # Fix selinux_kernel_status_page cleanly at statement level
-                  old_status = 'struct page *real_page = selinux_kernel_status_page(&selinux_state);'
-                  new_status = '#ifdef KSU_COMPAT_USE_SELINUX_STATE\n\tstruct page *real_page = selinux_kernel_status_page(&selinux_state);\n#else\n\tstruct page *real_page = selinux_kernel_status_page();\n#endif'
-                  
-                  if old_status in content:
-                      content = content.replace(old_status, new_status)
+                  # Ensure security_context_to_sid always passes &selinux_state if legacy fallback lost it
+                  if 'security_context_to_sid("u:r:ksu:s0"' in content:
+                      content = content.replace(
+                          'security_context_to_sid("u:r:ksu:s0"',
+                          'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+                      )
+                      updated = True
+
+                  if 'security_context_to_sid("u:r:priv_app:s0:c512,c768"' in content:
+                      content = content.replace(
+                          'security_context_to_sid("u:r:priv_app:s0:c512,c768"',
+                          'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+                      )
                       updated = True
 
                   if updated:
                       with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f'[+] Statement-level patch applied to: {file_path}')
+                      print(f'[+] Injected &selinux_state in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
