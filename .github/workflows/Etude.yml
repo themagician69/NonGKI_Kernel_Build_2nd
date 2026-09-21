@@ -1,4 +1,4 @@
-name: Beryllium
+name: Etude
 
 on:
   workflow_call:
@@ -13,8 +13,8 @@ env:
   # Added KSU_VERSION=33204 flag to force version code during make execution
   EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
 
-  KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
-  KERNEL_BRANCH : "staging"
+  KERNEL_SOURCE : "https://github.com/themagician69/kernel_xiaomi_beryllium.git"
+  KERNEL_BRANCH : "15.0"
 
   CLANG_SOURCE : "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
   CLANG_BRANCH : "lineage-20.0"
@@ -26,7 +26,7 @@ env:
   GCC_32_BRANCH : "android12L-release"
 
   DEFCONFIG_SOURCE: ""
-  DEFCONFIG_NAME : "vendor/xiaomi/mi845_defconfig"
+  DEFCONFIG_NAME : "vendor/sdm845-perf_defconfig"
   DEFCONFIG_ORIGIN_IMAGE: ""
   DEFCONFIG_FROM_BOOT: false
 
@@ -47,7 +47,7 @@ env:
   NEED_DTBO : false
   NEED_SAFE_DTBO : false
 
-  ROM_TEXT : "KSUN33204"
+  ROM_TEXT : "EtudeKSUN33204"
 
   # Other env
   PYTHON_VERSION: "3"
@@ -87,7 +87,7 @@ env:
   SKIP_PATCH: "false"
 
   BUILD_OTHER_CONFIG: "true"
-  MERGE_CONFIG_FILES: "vendor/xiaomi/beryllium.config,vendor/debugfs.config"
+  MERGE_CONFIG_FILES: "beryllium_defconfig"
 
   FREE_MORE_SPACE: "false"
 
