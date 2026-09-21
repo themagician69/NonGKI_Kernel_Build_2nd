@@ -154,9 +154,9 @@ jobs:
 
           # 2. Guarantee KernelSU and SELinux state configs across defconfigs
           echo "CONFIG_KSU=y" >> arch/arm64/configs/beryllium_defconfig
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/sdm845-perf_defconfig
           echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/beryllium_defconfig
-          echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
+          echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/vendor/xiaomi/sdm845-perf_defconfig
 
           # 3. Safely append -DKSU_COMPAT_USE_SELINUX_STATE to existing KSU Makefiles/Kbuilds
           for dir in drivers/kernelsu drivers/ksu; do
