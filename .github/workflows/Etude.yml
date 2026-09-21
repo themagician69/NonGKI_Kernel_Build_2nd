@@ -120,6 +120,11 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
 
+          # Fix Assembler error: Strip incompatible dotprod extensions from arch/arm64 Makefiles
+          find arch/arm64/ -type f \( -name "Makefile" -o -name "Kconfig*" \) -exec sed -i 's/\+nodotprod//g' {} +
+          find arch/arm64/ -type f \( -name "Makefile" -o -name "Kconfig*" \) -exec sed -i 's/\+dotprod//g' {} +
+          echo "[+] Stripped +nodotprod / +dotprod flags from arch/arm64 Makefiles"
+
           # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
             if [ -f "$kbuild" ]; then
