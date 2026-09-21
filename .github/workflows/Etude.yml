@@ -10,14 +10,15 @@ env:
   DEVICE_CODENAME : "beryllium"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  # Added KSU_VERSION=33204 flag to force version code during make execution
-  EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
+  # Added LLVM=1 and LLVM_IAS=1 to use integrated LLVM toolchain like original script
+  EXTRA_CMDS : "LLVM=1 LLVM_IAS=1 LD=ld.lld KSU_VERSION=33204"
 
   KERNEL_SOURCE : "https://github.com/themagician69/kernel_xiaomi_beryllium.git"
   KERNEL_BRANCH : "15.0"
 
-  CLANG_SOURCE : "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
-  CLANG_BRANCH : "lineage-20.0"
+  # Updated to Prelude-Clang from original build script
+  CLANG_SOURCE : "https://gitlab.com/jjpprrrr/prelude-clang.git"
+  CLANG_BRANCH : "master"
 
   GCC_GNU : false
   GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
@@ -119,11 +120,6 @@ jobs:
       - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
-
-          # Fix Assembler error: Strip incompatible dotprod extensions from arch/arm64 Makefiles
-          find arch/arm64/ -type f \( -name "Makefile" -o -name "Kconfig*" \) -exec sed -i 's/\+nodotprod//g' {} +
-          find arch/arm64/ -type f \( -name "Makefile" -o -name "Kconfig*" \) -exec sed -i 's/\+dotprod//g' {} +
-          echo "[+] Stripped +nodotprod / +dotprod flags from arch/arm64 Makefiles"
 
           # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
