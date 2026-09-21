@@ -9,18 +9,21 @@ env:
   DEVICE_NAME : "poco f1"
   DEVICE_CODENAME : "beryllium"
 
-  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  # Added LLVM=1 and LLVM_IAS=1 to use integrated LLVM toolchain like original script
-  EXTRA_CMDS : "LLVM=1 LLVM_IAS=1 LD=ld.lld KSU_VERSION=33204"
+  # Updated to pass full LLVM toolchain cross-compile prefixes
+  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu-"
+  
+  # Set LLVM=1, LLVM_IAS=1, and all LLVM binutils (LD, AR, NM, etc.) matching Prelude-Clang
+  EXTRA_CMDS : "LLVM=1 LLVM_IAS=1 LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip KSU_VERSION=33204"
 
   KERNEL_SOURCE : "https://github.com/themagician69/kernel_xiaomi_beryllium.git"
   KERNEL_BRANCH : "15.0"
 
-  # Updated to Prelude-Clang from original build script
+  # Prelude-Clang from original build script
   CLANG_SOURCE : "https://gitlab.com/jjpprrrr/prelude-clang.git"
   CLANG_BRANCH : "master"
 
-  GCC_GNU : false
+  # Set GCC_GNU to true so build system avoids ancient 4.9 GCC ld linkers
+  GCC_GNU : true
   GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
   GCC_64_BRANCH : "android12L-release"
   GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
@@ -120,6 +123,12 @@ jobs:
       - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
+
+          # Ensure vDSO uses $(LD) / ld.lld instead of falling back to host gcc-64 linker
+          if [ -f "arch/arm64/kernel/vdso/Makefile" ]; then
+            sed -i 's/\$(CROSS_COMPILE)ld/\$(LD)/g' arch/arm64/kernel/vdso/Makefile
+            echo "[+] Updated arch/arm64/kernel/vdso/Makefile to use LLVM ld.lld"
+          fi
 
           # Overwrite calculated git version code with 33204 in Kbuild
           for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
