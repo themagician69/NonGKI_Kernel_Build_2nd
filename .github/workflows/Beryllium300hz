@@ -1,0 +1,231 @@
+name: Beryllium
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  # Device env
+  DEVICE_NAME : "poco f1"
+  DEVICE_CODENAME : "beryllium"
+
+  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
+  # Added KSU_VERSION=33204 flag to force version code during make execution
+  EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
+
+  KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
+  KERNEL_BRANCH : "staging"
+
+  CLANG_SOURCE : "https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git"
+  CLANG_BRANCH : "lineage-20.0"
+
+  GCC_GNU : false
+  GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH : "android12L-release"
+  GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH : "android12L-release"
+
+  DEFCONFIG_SOURCE: ""
+  DEFCONFIG_NAME : "vendor/xiaomi/mi845_defconfig"
+  DEFCONFIG_ORIGIN_IMAGE: ""
+  DEFCONFIG_FROM_BOOT: false
+
+  KERNELSU_SOURCE : ""
+  KERNELSU_BRANCH : ""
+
+  KERNELSU_AUTO_GET : "true"
+  KERNELSU_AUTO_FORK : "next"
+
+  SUSFS_ENABLE : false
+  SUSFS_FIXED : false
+
+  AK3_SOURCE : "https://github.com/Legendleo90/AnyKernel3.git"
+  AK3_BRANCH : "electro"
+
+  BOOT_SOURCE : ""
+
+  NEED_DTBO : false
+  NEED_SAFE_DTBO : false
+
+  ROM_TEXT : "KSUN33204"
+
+  # Other env
+  PYTHON_VERSION: "3"
+
+  PACK_METHOD: "Anykernel3"
+  PACK_KMODULES: "false"
+
+  KERNELSU_METHOD: "shell"
+  KERNELSU_SUS_PATCH: "false"
+
+  PATCHES_SOURCE: "JackA1ltman/NonGKI_Kernel_Patches"
+  PATCHES_BRANCH: "mi_kernel"
+
+  SUSFS_FOLDER_FIXED: "mix2s_evox_a15"
+  SUSFS_PATCH_FIXED: "susfs_fixed"
+
+  REKERNEL_ENABLE: "false"
+  DROIDSPACES_ENABLE: "false"
+  NOMOUNT_ENABLE: "false"
+
+  HOOK_METHOD: "syscall"
+
+  KERNEL_PATCH: "false"
+
+  KPM_ENABLE: "false"
+  KPM_INLINE: "false"
+  KPM_KPATCH_NEXT: "false"
+  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux"
+
+  BASEBAND_GUARD_ENABLE: "false"
+  BASEBAND_GUARD_BOOT: "false"
+
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
+
+  BUILD_DEBUGGER: "false"
+  SKIP_PATCH: "false"
+
+  # Priority swapped so beryllium.config overrides debugfs.config
+  BUILD_OTHER_CONFIG: "true"
+  MERGE_CONFIG_FILES: "vendor/debugfs.config,vendor/xiaomi/beryllium.config"
+
+  FREE_MORE_SPACE: "false"
+
+jobs:
+  build-kernel:
+    name: Beryllium build kernel
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: ⏰ Checkout repository
+        uses: actions/checkout@v6
+
+      - name: ⌛️ Compilation environment preparation
+        uses: ./.github/workflows/build-env
+
+      - name: ⚙️ Get neccssary tools
+        uses: ./.github/workflows/build-ready
+
+      - name: 🪝 Patch Kernel of SUSFS
+        uses: ./.github/workflows/patch-susfs
+
+      - name: 🔗 Patch for no-kprobe
+        uses: ./.github/workflows/patch-no-kprobe
+
+      - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
+        run: |
+          cd $GITHUB_WORKSPACE/device_kernel
+
+          # Overwrite calculated git version code with 33204 in Kbuild
+          for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
+            if [ -f "$kbuild" ]; then
+              sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
+              sed -i 's/KSU_VERSION :=.*/KSU_VERSION := 33204/' "$kbuild"
+              echo "[+] Applied version 33204 override to $kbuild"
+            fi
+          done
+
+          # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
+          if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
+            KSU_DIR=""
+            KSU_SUBDIR=""
+            if [ -d "drivers/kernelsu" ]; then
+              KSU_DIR="drivers/kernelsu"
+              KSU_SUBDIR="kernelsu"
+            elif [ -d "drivers/ksu" ]; then
+              KSU_DIR="drivers/ksu"
+              KSU_SUBDIR="ksu"
+            fi
+
+            if ! grep -q "$KSU_SUBDIR/Kconfig" drivers/Kconfig; then
+              echo "source \"$KSU_DIR/Kconfig\"" >> drivers/Kconfig
+              echo "[+] Added $KSU_DIR/Kconfig to drivers/Kconfig"
+            fi
+
+            if ! grep -q "$KSU_SUBDIR/" drivers/Makefile; then
+              echo "obj-y += $KSU_SUBDIR/" >> drivers/Makefile
+              echo "[+] Added obj-y += $KSU_SUBDIR/ to drivers/Makefile"
+            fi
+          fi
+
+          # 2. Guarantee KernelSU, HZ 300, and SELinux state configs across defconfigs
+          CONFIG_FILE="arch/arm64/configs/vendor/xiaomi/beryllium.config"
+          if [ -f "$CONFIG_FILE" ]; then
+            echo "# CONFIG_HZ_100 is not set" >> "$CONFIG_FILE"
+            echo "CONFIG_HZ_300=y" >> "$CONFIG_FILE"
+            echo "CONFIG_HZ=300" >> "$CONFIG_FILE"
+            echo "[+] Successfully appended HZ 300 to $CONFIG_FILE"
+          fi
+
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
+          echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/vendor/xiaomi/beryllium.config
+          echo "CONFIG_KSU_COMPAT_USE_SELINUX_STATE=y" >> arch/arm64/configs/vendor/xiaomi/mi845_defconfig
+
+          # 3. Safely append -DKSU_COMPAT_USE_SELINUX_STATE to existing KSU Makefiles/Kbuilds
+          for dir in drivers/kernelsu drivers/ksu; do
+            if [ -d "$dir" ]; then
+              find "$dir" -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sh -c 'echo "ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE" >> "$1"' _ {} \;
+            fi
+          done
+
+          # Clean Python Script to fix selinux_hide.c safely
+          python3 - << 'EOF'
+          import os, glob
+
+          workspace = os.environ.get('GITHUB_WORKSPACE', '.')
+          drivers_path = os.path.join(workspace, 'device_kernel/drivers')
+
+          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True)
+
+          for file_path in ksu_files:
+              if os.path.exists(file_path):
+                  with open(file_path, 'r') as f:
+                      content = f.read()
+
+                  updated = False
+
+                  # Ensure security_context_to_sid always passes &selinux_state if legacy fallback lost it
+                  if 'security_context_to_sid("u:r:ksu:s0"' in content:
+                      content = content.replace(
+                          'security_context_to_sid("u:r:ksu:s0"',
+                          'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+                      )
+                      updated = True
+
+                  if 'security_context_to_sid("u:r:priv_app:s0:c512,c768"' in content:
+                      content = content.replace(
+                          'security_context_to_sid("u:r:priv_app:s0:c512,c768"',
+                          'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+                      )
+                      updated = True
+
+                  if updated:
+                      with open(file_path, 'w') as f:
+                          f.write(content)
+                      print(f'[+] Injected &selinux_state in: {file_path}')
+          EOF
+
+      - name: 🧰 Patch Kernel of Re:Kernel
+        uses: ./.github/workflows/patch-rekernel
+
+      - name: 💿 Patch Kernel of Droidspaces
+        uses: ./.github/workflows/patch-droidspaces
+
+      - name: 🔒 Patch Kernel of Baseband Guard
+        uses: ./.github/workflows/patch-baseband-guard
+
+      - name: 🚀 Build Process
+        uses: ./.github/workflows/build-process
+
+      - name: 🔩 Pack Process
+        uses: ./.github/workflows/pack-process
+
+      - name: ✏️ Upload Artifacts
+        uses: ./.github/workflows/upload-files
