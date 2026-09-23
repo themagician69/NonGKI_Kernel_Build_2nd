@@ -99,13 +99,24 @@ runs:
             fi
           fi
 
-          # Final Override: Force KernelSU and disable Kprobes directly in out/.config
-          echo "=============================================="
-          echo "=Enforce CONFIG_KSU=y and disable CONFIG_KPROBES="
-          echo "=============================================="
+          # Final Override: Force KernelSU, HZ=300, and disable Kprobes directly in out/.config
+          echo "========================================================="
+          echo "=Enforce CONFIG_KSU=y, CONFIG_HZ=300 & disable Kprobes  ="
+          echo "========================================================="
+          sed -i '/CONFIG_HZ_100/d; /CONFIG_HZ_250/d; /CONFIG_HZ_300/d; /CONFIG_HZ_1000/d; /^CONFIG_HZ=/d' out/.config
           echo "CONFIG_KSU=y" >> out/.config
+          echo "# CONFIG_HZ_100 is not set" >> out/.config
+          echo "CONFIG_HZ_300=y" >> out/.config
+          echo "CONFIG_HZ=300" >> out/.config
           sed -i 's/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/' out/.config
           sed -i 's/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/' out/.config
+
+          # Normalize choices non-interactively after manual overrides
+          if [[ "$BUILD_CLANG" == "true" ]]; then
+              make CC="ccache clang" O=out ARCH="${{ env.KERNEL_ARCH }}" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} olddefconfig
+          else
+              make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
+          fi
 
           # KPM Detect
           if [[ "${{ env.KPM_ENABLE }}" == "true" ]] && [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
