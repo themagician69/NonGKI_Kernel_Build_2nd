@@ -164,9 +164,9 @@ jobs:
             fi
           done
 
-          # Unified KernelSU Patch: SELinux + Kernel 4.9 Compatibility Fixes (.c and .h)
+          # Unified KernelSU Patch: SELinux + Dynamic linux/sched/*.h Header Fixes (.c and .h)
           python3 - << 'EOF'
-          import os, glob
+          import os, glob, re
 
           workspace = os.environ.get('GITHUB_WORKSPACE', '.')
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
@@ -176,6 +176,20 @@ jobs:
                       glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
                       glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
 
+          # Regex to match any #include <linux/sched/*.h> call
+          sched_pattern = re.compile(r'#include\s+<linux/sched/([a-zA-Z0-9_]+)\.h>')
+
+          def replace_sched(match):
+              header = match.group(1)
+              return (
+                  f'#include <linux/version.h>\n'
+                  f'#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n'
+                  f'#include <linux/sched/{header}.h>\n'
+                  f'#else\n'
+                  f'#include <linux/sched.h>\n'
+                  f'#endif'
+              )
+
           for file_path in ksu_files:
               if os.path.exists(file_path):
                   with open(file_path, 'r') as f:
@@ -183,12 +197,9 @@ jobs:
 
                   updated = False
 
-                  # 1. Fix missing linux/sched/signal.h on Linux < 4.11
-                  if '<linux/sched/signal.h>' in content:
-                      content = content.replace(
-                          '#include <linux/sched/signal.h>',
-                          '#include <linux/version.h>\n#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n#include <linux/sched/signal.h>\n#else\n#include <linux/sched.h>\n#endif'
-                      )
+                  # 1. Dynamically fix all linux/sched/*.h sub-headers for kernel < 4.11
+                  if sched_pattern.search(content):
+                      content = sched_pattern.sub(replace_sched, content)
                       updated = True
 
                   # 2. Fix selinux_status_update_policyload (1 arg -> 2 args)
