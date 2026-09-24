@@ -11,7 +11,7 @@ env:
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
   # Added KSU_VERSION=33204 flag to force version code during make execution
-  EXTRA_CMDS : "LD=ld.lld KSU_VERSION=33204"
+  EXTRA_CMDS : "LD=ld.lld"
 
   KERNEL_SOURCE : "https://github.com/JackA1ltman/kernel_xiaomi_sdm845_binder_cgroup_v2.git"
   KERNEL_BRANCH : "staging"
@@ -47,7 +47,7 @@ env:
   NEED_DTBO : false
   NEED_SAFE_DTBO : false
 
-  ROM_TEXT : "KSUN33204"
+  ROM_TEXT : "KSUNv300"
 
   # Other env
   PYTHON_VERSION: "3"
@@ -120,16 +120,6 @@ jobs:
       - name: 🪛 Extra Kernel Options & Fix SELinux Signature Functions
         run: |
           cd $GITHUB_WORKSPACE/device_kernel
-
-          # Overwrite calculated git version code with 33204 in Kbuild
-          for kbuild in drivers/kernelsu/Kbuild drivers/ksu/Kbuild; do
-            if [ -f "$kbuild" ]; then
-              sed -i 's/KSU_VERSION ?=.*/KSU_VERSION := 33204/' "$kbuild"
-              sed -i 's/KSU_VERSION :=.*/KSU_VERSION := 33204/' "$kbuild"
-              echo "[+] Applied version 33204 override to $kbuild"
-            fi
-          done
-
           # 1. Ensure Kconfig and Makefile entries are present with correct relative paths
           if [ -d "drivers/kernelsu" ] || [ -d "drivers/ksu" ]; then
             KSU_DIR=""
@@ -174,7 +164,7 @@ jobs:
             fi
           done
 
-          # Clean Python Script to fix selinux_hide.c safely
+          # Unified SELinux Patch: Fixes both security_context_to_sid and selinux_status_update_policyload (.c and .h)
           python3 - << 'EOF'
           import os, glob
 
@@ -182,7 +172,9 @@ jobs:
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
 
           ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True)
+                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
 
           for file_path in ksu_files:
               if os.path.exists(file_path):
@@ -191,25 +183,28 @@ jobs:
 
                   updated = False
 
-                  # Ensure security_context_to_sid always passes &selinux_state if legacy fallback lost it
-                  if 'security_context_to_sid("u:r:ksu:s0"' in content:
-                      content = content.replace(
-                          'security_context_to_sid("u:r:ksu:s0"',
-                          'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
-                      )
+                  # 1. Fix selinux_status_update_policyload (1 arg -> 2 args)
+                  if 'selinux_status_update_policyload(0)' in content:
+                      content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
                       updated = True
 
-                  if 'security_context_to_sid("u:r:priv_app:s0:c512,c768"' in content:
-                      content = content.replace(
-                          'security_context_to_sid("u:r:priv_app:s0:c512,c768"',
-                          'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
-                      )
+                  # 2. Fix security_context_to_sid (4 args -> 5 args)
+                  t1_old = 'security_context_to_sid("u:r:ksu:s0"'
+                  t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
+                  if t1_old in content:
+                      content = content.replace(t1_old, t1_new)
+                      updated = True
+
+                  t2_old = 'security_context_to_sid("u:r:priv_app:s0:c512,c768"'
+                  t2_new = 'security_context_to_sid(&selinux_state, "u:r:priv_app:s0:c512,c768"'
+                  if t2_old in content:
+                      content = content.replace(t2_old, t2_new)
                       updated = True
 
                   if updated:
                       with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f'[+] Injected &selinux_state in: {file_path}')
+                      print(f'[+] Applied SELinux patches in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
@@ -229,3 +224,4 @@ jobs:
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
+        
