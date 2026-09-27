@@ -164,17 +164,15 @@ jobs:
             fi
           done
 
-          # Target Patch: SELinux Signature Adjustments Only
+          # Target Patch: SELinux Signature Adjustments + Legacy Header Guard (ksu.h and ksud.h)
           python3 - << 'EOF'
           import os, glob
 
           workspace = os.environ.get('GITHUB_WORKSPACE', '.')
           drivers_path = os.path.join(workspace, 'device_kernel/drivers')
 
-          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/ksu/**/*.h'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.c'), recursive=True) + \
-                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.h'), recursive=True)
+          ksu_files = glob.glob(os.path.join(drivers_path, '**/ksu/**/*.[ch]'), recursive=True) + \
+                      glob.glob(os.path.join(drivers_path, '**/kernelsu/**/*.[ch]'), recursive=True)
 
           for file_path in ksu_files:
               if os.path.exists(file_path):
@@ -183,12 +181,25 @@ jobs:
 
                   updated = False
 
-                  # 1. Fix selinux_status_update_policyload (1 arg -> 2 args)
+                  # 1. Fix compiler_types.h missing in ksud.h / legacy headers (< 4.19)
+                  if '#include <linux/compiler_types.h>' in content and 'LINUX_VERSION_CODE' not in content:
+                      fallback = (
+                          '#include <linux/version.h>\n'
+                          '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)\n'
+                          '#include <linux/compiler_types.h>\n'
+                          '#else\n'
+                          '#include <linux/compiler.h>\n'
+                          '#endif'
+                      )
+                      content = content.replace('#include <linux/compiler_types.h>', fallback)
+                      updated = True
+
+                  # 2. Fix selinux_status_update_policyload (1 arg -> 2 args)
                   if 'selinux_status_update_policyload(0)' in content:
                       content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
                       updated = True
 
-                  # 2. Fix security_context_to_sid (4 args -> 5 args)
+                  # 3. Fix security_context_to_sid (4 args -> 5 args)
                   t1_old = 'security_context_to_sid("u:r:ksu:s0"'
                   t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
                   if t1_old in content:
@@ -204,7 +215,7 @@ jobs:
                   if updated:
                       with open(file_path, 'w') as f:
                           f.write(content)
-                      print(f'[+] Applied SELinux patch in: {file_path}')
+                      print(f'[+] Applied patch in: {file_path}')
           EOF
 
       - name: 🧰 Patch Kernel of Re:Kernel
