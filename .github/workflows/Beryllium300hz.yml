@@ -164,7 +164,7 @@ jobs:
             fi
           done
 
-          # Target Patch: SELinux Signature Adjustments + Legacy Header Guard (ksu.h and ksud.h)
+          # Target Patch: SELinux Signature Adjustments + Legacy Header Guards
           python3 - << 'EOF'
           import os, glob
 
@@ -194,12 +194,25 @@ jobs:
                       content = content.replace('#include <linux/compiler_types.h>', fallback)
                       updated = True
 
-                  # 2. Fix selinux_status_update_policyload (1 arg -> 2 args)
+                  # 2. Fix sched/signal.h missing on legacy kernels (< 4.11)
+                  if '#include <linux/sched/signal.h>' in content and 'KERNEL_VERSION(4, 11, 0)' not in content:
+                      sched_fallback = (
+                          '#include <linux/version.h>\n'
+                          '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n'
+                          '#include <linux/sched/signal.h>\n'
+                          '#else\n'
+                          '#include <linux/sched.h>\n'
+                          '#endif'
+                      )
+                      content = content.replace('#include <linux/sched/signal.h>', sched_fallback)
+                      updated = True
+
+                  # 3. Fix selinux_status_update_policyload (1 arg -> 2 args)
                   if 'selinux_status_update_policyload(0)' in content:
                       content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
                       updated = True
 
-                  # 3. Fix security_context_to_sid (4 args -> 5 args)
+                  # 4. Fix security_context_to_sid (4 args -> 5 args)
                   t1_old = 'security_context_to_sid("u:r:ksu:s0"'
                   t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
                   if t1_old in content:
