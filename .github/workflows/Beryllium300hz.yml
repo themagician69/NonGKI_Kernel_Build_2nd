@@ -182,7 +182,7 @@ jobs:
                   updated = False
 
                   # 1. Fix compiler_types.h missing in ksud.h / legacy headers (< 4.19)
-                  if '#include <linux/compiler_types.h>' in content and 'LINUX_VERSION_CODE' not in content:
+                  if '#include <linux/compiler_types.h>' in content and '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)' not in content:
                       fallback = (
                           '#include <linux/version.h>\n'
                           '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)\n'
@@ -195,7 +195,7 @@ jobs:
                       updated = True
 
                   # 2. Fix sched/signal.h missing on legacy kernels (< 4.11)
-                  if '#include <linux/sched/signal.h>' in content and 'KERNEL_VERSION(4, 11, 0)' not in content:
+                  if '#include <linux/sched/signal.h>' in content and '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)' not in content:
                       sched_fallback = (
                           '#include <linux/version.h>\n'
                           '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n'
@@ -208,7 +208,7 @@ jobs:
                       updated = True
 
                   # 3. Fix sched/task.h missing on legacy kernels (< 4.11)
-                  if '#include <linux/sched/task.h>' in content and 'KERNEL_VERSION(4, 11, 0)' not in content:
+                  if '#include <linux/sched/task.h>' in content and '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)' not in content:
                       task_fallback = (
                           '#include <linux/version.h>\n'
                           '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n'
@@ -221,7 +221,7 @@ jobs:
                       updated = True
 
                   # 4. Fix sched/user.h missing on legacy kernels (< 4.11)
-                  if '#include <linux/sched/user.h>' in content and 'KERNEL_VERSION(4, 11, 0)' not in content:
+                  if '#include <linux/sched/user.h>' in content and '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)' not in content:
                       user_fallback = (
                           '#include <linux/version.h>\n'
                           '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n'
