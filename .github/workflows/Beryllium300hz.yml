@@ -220,12 +220,25 @@ jobs:
                       content = content.replace('#include <linux/sched/task.h>', task_fallback)
                       updated = True
 
-                  # 4. Fix selinux_status_update_policyload (1 arg -> 2 args)
+                  # 4. Fix sched/user.h missing on legacy kernels (< 4.11)
+                  if '#include <linux/sched/user.h>' in content and 'KERNEL_VERSION(4, 11, 0)' not in content:
+                      user_fallback = (
+                          '#include <linux/version.h>\n'
+                          '#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n'
+                          '#include <linux/sched/user.h>\n'
+                          '#else\n'
+                          '#include <linux/sched.h>\n'
+                          '#endif'
+                      )
+                      content = content.replace('#include <linux/sched/user.h>', user_fallback)
+                      updated = True
+
+                  # 5. Fix selinux_status_update_policyload (1 arg -> 2 args)
                   if 'selinux_status_update_policyload(0)' in content:
                       content = content.replace('selinux_status_update_policyload(0)', 'selinux_status_update_policyload(&selinux_state, 0)')
                       updated = True
 
-                  # 5. Fix security_context_to_sid (4 args -> 5 args)
+                  # 6. Fix security_context_to_sid (4 args -> 5 args)
                   t1_old = 'security_context_to_sid("u:r:ksu:s0"'
                   t1_new = 'security_context_to_sid(&selinux_state, "u:r:ksu:s0"'
                   if t1_old in content:
@@ -238,7 +251,7 @@ jobs:
                       content = content.replace(t2_old, t2_new)
                       updated = True
 
-                  # 6. Fix kernel_write pointer types for legacy kernel 4.9
+                  # 7. Fix kernel_write pointer types for legacy kernel 4.9
                   if 'kernel_write(fp, &' in content:
                       content = content.replace('kernel_write(fp, &magic,', 'kernel_write(fp, (const char *)&magic,')
                       content = content.replace('kernel_write(fp, &version,', 'kernel_write(fp, (const char *)&version,')
@@ -268,4 +281,3 @@ jobs:
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
-        
