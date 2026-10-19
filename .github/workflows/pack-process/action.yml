@@ -1,3 +1,4 @@
+
 name: 'Pack Process.'
 
 runs:
@@ -10,7 +11,7 @@ runs:
           TIME=$(date +"%Y%m%d%H%M%S")
           FINAL_ZIP="${{ env.DEVICE_CODENAME }}-${{ env.ROM_TEXT }}-$TIME-${{ env.PACK_METHOD }}.zip"
           
-          # Move into the device_kernel directory where Anykernel3 should live
+          # Move into the device_kernel directory where Anykernel3 lives
           cd $GITHUB_WORKSPACE/device_kernel/
           IMAGE_DIR="out/arch/${{ env.KERNEL_ARCH }}/boot"
 
@@ -29,9 +30,13 @@ runs:
             exit 1
           fi
 
+          # Use shell variables with safe fallbacks to prevent empty/missing context issues
+          AK_SRC="${AK3_SOURCE:-https://github.com/Legendleo90/AnyKernel3.git}"
+          AK_BR="${AK3_BRANCH:-electro}"
+
           # Clone AnyKernel3 fresh to ensure all scripts and framework files exist
           rm -rf Anykernel3
-          git clone -b ${{ env.AK3_BRANCH }}${{ env.AK3_SOURCE }} Anykernel3
+          git clone -b "$AK_BR" "$AK_SRC" Anykernel3
 
           # Copy File To Anykernel3 (Note lowercase 'k')
           cp -fp "$IMAGE" Anykernel3/
