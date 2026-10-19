@@ -27,11 +27,17 @@ runs:
         # Clean up temp clone
         rm -rf nomount_temp
 
-        # Ensure it's hooked into fs/Makefile
+        # Hook into fs/Kconfig if not already present
+        if ! grep -q "nomount/Kconfig" fs/Kconfig; then
+          echo 'source "fs/nomount/Kconfig"' >> fs/Kconfig
+        fi
+
+        # Hook into fs/Makefile if not already present
         if ! grep -q "nomount" fs/Makefile; then
           echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> fs/Makefile
         fi
 
+        # Enable CONFIG_NOMOUNT in defconfig
         echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
 
-        echo "[+] Patched NoMount for your kernel successfully."
+        echo "[+] Patched NoMount and registered Kconfig successfully."
