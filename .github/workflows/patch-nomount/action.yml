@@ -1,14 +1,31 @@
-name: 'Patch NoMount for Kernel.'
-
-runs:
-  using: 'composite'
-  steps:
       - name: Patch NoMount
         if: env.NOMOUNT_ENABLE == 'true'
         shell: bash
         run: |
           cd $GITHUB_WORKSPACE/device_kernel/
-          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s
+          
+          # Clean up any previous attempts
+          rm -rf fs/nomount nomount_temp
+          
+          # Clone the official repo into a temp folder
+          git clone https://github.com/maxsteeel/nomount.git nomount_temp
+          
+          # Checkout the stable commit known to compile cleanly or match your kernel version
+          cd nomount_temp
+          git checkout 7046c7a
+          cd ..
+          
+          # Copy the kernel source files into fs/nomount
+          mkdir -p fs/nomount
+          cp -rf nomount_temp/kernel/* fs/nomount/
+          
+          # Clean up temp clone
+          rm -rf nomount_temp
+
+          # Ensure it's hooked into fs/Makefile
+          if ! grep -q "nomount" fs/Makefile; then
+            echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> fs/Makefile
+          fi
 
           echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
 
