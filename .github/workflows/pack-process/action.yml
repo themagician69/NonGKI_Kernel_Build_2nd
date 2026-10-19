@@ -10,7 +10,7 @@ runs:
           TIME=$(date +"%Y%m%d%H%M%S")
           FINAL_ZIP="${{ env.DEVICE_CODENAME }}-${{ env.ROM_TEXT }}-$TIME-${{ env.PACK_METHOD }}.zip"
           
-          # Move into the device_kernel directory where Anykernel3 lives
+          # Move into the device_kernel directory where Anykernel3 should live
           cd $GITHUB_WORKSPACE/device_kernel/
           IMAGE_DIR="out/arch/${{ env.KERNEL_ARCH }}/boot"
 
@@ -29,8 +29,11 @@ runs:
             exit 1
           fi
 
-          # Ensure Anykernel3 directory exists before copying
-          mkdir -p Anykernel3
+          # Clone AnyKernel3 fresh to ensure all scripts and framework files exist
+          rm -rf Anykernel3
+          git clone -b ${{ env.AK3_BRANCH }}${{ env.AK3_SOURCE }} Anykernel3
+
+          # Copy File To Anykernel3 (Note lowercase 'k')
           cp -fp "$IMAGE" Anykernel3/
 
           # Zipping and save directly inside device_kernel/
@@ -78,4 +81,51 @@ runs:
             echo "Found dtbo.img !"
 
           else
-            echo
+            echo "[-] Could not found dtbo.img! Your device maybe needn't the file."
+
+          fi
+
+          if [[ -f "$IMAGE_DIR/dtb.img" ]]; then
+            cp -fp $IMAGE_DIR/dtb.img out/dtb
+            echo "Found dtb.img, converted dtb !"
+
+          elif [ -f "$IMAGE_DIR/dtb" ]; then
+            echo "Found DTB!"
+            cp -fp $IMAGE_DIR/dtb out/dtb
+
+          elif [ "${{ env.GENERATE_DTB }}" == "true" ]; then
+            if ls $IMAGE_DIR/dts/${{ env.GENERATE_CHIP }}/*.dtb 1> /dev/null 2>&1; then
+                DTB_PATH="dts"
+            elif ls $IMAGE_DIR/dts/vendor/${{ env.GENERATE_CHIP }}/*.dtb 1> /dev/null 2>&1; then
+                DTB_PATH="dts/vendor"
+            else
+                echo "[-] Could not found dts, abort."
+                false
+            fi
+
+            cat $IMAGE_DIR/$DTB_PATH/${{ env.GENERATE_CHIP }}/*.dtb >$IMAGE_DIR/dtb
+            cp -fp $IMAGE_DIR/dtb out/dtb
+            echo "[+] Generated ${{ env.GENERATE_CHIP }} dtb."
+
+          else
+            echo "[-] Could not found dtb! Your device maybe needn't the file."
+
+          fi
+
+          if [[ -f "tmp/dtbo.img" ]]; then
+            eval "mkboottools/mkbootimg.py $FORMAT_MKBOOTING -o boot.img"
+            cp -fp boot.img tmp/
+            cd tmp
+            7za a -mx9 tmp.zip *
+            cd ..
+            cp -fp tmp/tmp.zip ${{ env.DEVICE_CODENAME }}-${{ env.ROM_TEXT }}-$TIME-image.zip
+            rm -rf tmp
+            echo "PACK_NAME=${{ env.DEVICE_CODENAME }}-${{ env.ROM_TEXT }}-$TIME-image.zip" >> $GITHUB_ENV
+
+          else
+            eval "mkboottools/mkbootimg.py $FORMAT_MKBOOTING -o${{ env.DEVICE_CODENAME }}-${{ env.ROM_TEXT }}-$TIME-image.img"
+            echo "PACK_NAME=${{ env.DEVICE_CODENAME }}-${{ env.ROM_TEXT }}-$TIME-image.img" >> $GITHUB_ENV
+
+          fi
+
+          rm -f $GITHUB_WORKSPACE/boot_source_${{ env.DEVICE_NAME }}.img
