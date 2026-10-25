@@ -1,3 +1,8 @@
+name: 'Patch NoMount'
+description: 'Clones, patches, and integrates NoMount into the kernel VFS tree'
+runs:
+  using: 'composite'
+  steps:
     - name: Setup and Patch NoMount for VFS Signatures
       if: env.NOMOUNT_ENABLE == 'true'
       shell: bash
