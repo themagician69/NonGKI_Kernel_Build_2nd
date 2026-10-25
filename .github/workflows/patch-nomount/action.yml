@@ -27,22 +27,14 @@ runs:
         cp -f NoMount/kernel/Kconfig fs/nomount/ 2>/dev/null || true
         cp -f NoMount/kernel/Makefile fs/nomount/ 2>/dev/null || true
         
-        # Fallback: ensure Kconfig exists
+        # Fallback: ensure Kconfig exists (using spaces instead of tabs)
         if [ ! -f "fs/nomount/Kconfig" ]; then
-            cat << 'EOF' > fs/nomount/Kconfig
-config NOMOUNT
-	bool "NoMount VFS path redirection framework"
-	default y
-	help
-	  Enable NoMount VFS path redirection support.
-EOF
+            printf "config NOMOUNT\n    bool \"NoMount VFS path redirection framework\"\n    default y\n    help\n      Enable NoMount VFS path redirection support.\n" > fs/nomount/Kconfig
         fi
 
         # Fallback: ensure Makefile exists
         if [ ! -f "fs/nomount/Makefile" ]; then
-            cat << 'EOF' > fs/nomount/Makefile
-obj-$(CONFIG_NOMOUNT) += nomount.o
-EOF
+            echo "obj-\$(CONFIG_NOMOUNT) += nomount.o" > fs/nomount/Makefile
         fi
 
         # Clean up cloned repo folder
@@ -108,4 +100,4 @@ EOF
         fi
 
         echo "[+] NoMount integration and patching completed successfully."
-        
+		
