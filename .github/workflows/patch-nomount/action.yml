@@ -1,5 +1,5 @@
 name: 'Patch NoMount'
-description: 'Clones and patches NoMount for the kernel'
+description: 'Manually integrates NoMount into the kernel VFS tree'
 runs:
   using: 'composite'
   steps:
@@ -7,46 +7,31 @@ runs:
       if: env.NOMOUNT_ENABLE == 'true'
       shell: bash
       run: |
-        cd $GITHUB_WORKSPACE/device_kernel/
+        cd $GITHUB_WORKSPACE/device_kernel
         
-        # Clean up any previous attempts
-        rm -rf fs/nomount nomount_temp
+        # Clean up previous attempts
+        rm -rf NoMount fs/nomount
         
-        # Clone the official repo into a temp folder
-        git clone https://github.com/maxsteeel/nomount.git nomount_temp
-        
-        # Checkout the stable commit known to compile cleanly
-        cd nomount_temp
-        git checkout 7046c7a
-        cd ..
-        
-        # Copy the kernel source files into fs/nomount
+        # 1. Clone NoMount and copy source files into fs/nomount/
+        echo "Cloning NoMount framework..."
+        git clone https://github.com/maxsteeel/nomount.git NoMount
         mkdir -p fs/nomount
-        cp -rf nomount_temp/kernel/* fs/nomount/
+        cp -rf NoMount/kernel/src/* fs/nomount/
         
-        # Clean up temp clone
-        rm -rf nomount_temp
+        # Clean up the cloned repo folder
+        rm -rf NoMount
 
-        # Ensure fs/nomount/Kconfig exists (fallback for older commits)
-        if [ ! -f "fs/nomount/Kconfig" ]; then
-          echo 'config NOMOUNT' > fs/nomount/Kconfig
-          echo '	bool "NoMount support"' >> fs/nomount/Kconfig
-          echo '	default y' >> fs/nomount/Kconfig
-          echo '	help' >> fs/nomount/Kconfig
-          echo '	  NoMount VFS path redirection framework.' >> fs/nomount/Kconfig
+        # 2. Register NoMount in filesystem build system
+        echo "Integrating NoMount into fs/Makefile and fs/Kconfig..."
+        grep -q "nomount" "fs/Makefile" || echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> "fs/Makefile"
+        grep -q "fs/nomount/Kconfig" "fs/Kconfig" || echo 'source "fs/nomount/Kconfig"' >> "fs/Kconfig"
+
+        # 3. Enable CONFIG_NOMOUNT in your target defconfig dynamically
+        DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+        if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
+            echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
+            echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
         fi
 
-        # Hook into fs/Kconfig if not already present
-        if ! grep -q "nomount/Kconfig" fs/Kconfig; then
-          echo 'source "fs/nomount/Kconfig"' >> fs/Kconfig
-        fi
-
-        # Hook into fs/Makefile if not already present
-        if ! grep -q "nomount" fs/Makefile; then
-          echo 'output-\$(CONFIG_NOMOUNT) += nomount/' >> fs/Makefile 2>/dev/null || echo 'obj-\$(CONFIG_NOMOUNT) += nomount/' >> fs/Makefile
-        fi
-
-        # Enable CONFIG_NOMOUNT in defconfig
-        echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
-
-        echo "[+] Patched NoMount and registered configuration successfully."
+        echo "[+] NoMount manual integration completed successfully."
+        
