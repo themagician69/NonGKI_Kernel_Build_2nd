@@ -1,5 +1,5 @@
 name: 'Patch NoMount'
-description: 'Clones, sets up, and adapts NoMount for Linux 4.9 VFS compatibility'
+description: 'Clones, patches, and integrates NoMount into the kernel VFS tree'
 runs:
   using: 'composite'
   steps:
@@ -9,46 +9,55 @@ runs:
       run: |
         cd $GITHUB_WORKSPACE/device_kernel
         
-        # Clean up any previous attempts
+        # Clean up previous attempts
         rm -rf NoMount fs/nomount
         
-        # 1. Clone NoMount official repository
+        # 1. Clone NoMount framework
         echo "Cloning NoMount framework..."
         git clone https://github.com/maxsteeel/nomount.git NoMount
         
-        # 2. Run official symlink & Makefile/Kconfig integration logic
-        cd NoMount/kernel
-        # Use the official setup script logic inline or execute it
-        cd ../..
-        
+        # 2. Set up fs/nomount directory and copy all required files
         mkdir -p fs/nomount
-        ln -sfn "$(realpath --relative-to="fs" "NoMount/kernel/src")" "fs/nomount"
         
-        # Register in fs/Makefile
-        if ! grep -q "nomount" "fs/Makefile"; then
-            printf "\nobj-\$(CONFIG_NOMOUNT) += nomount/\n" >> "fs/Makefile"
-            echo "[+] Added nomount to fs/Makefile"
+        if [ -d "NoMount/kernel/src" ]; then
+            cp -rf NoMount/kernel/src/* fs/nomount/
+        fi
+        
+        # Explicitly copy or generate Kconfig and Makefile for fs/nomount/
+        cp -f NoMount/kernel/Kconfig fs/nomount/ 2>/dev/null || true
+        cp -f NoMount/kernel/Makefile fs/nomount/ 2>/dev/null || true
+        
+        # Fallback: ensure Kconfig exists
+        if [ ! -f "fs/nomount/Kconfig" ]; then
+            cat << 'EOF' > fs/nomount/Kconfig
+config NOMOUNT
+	bool "NoMount VFS path redirection framework"
+	default y
+	help
+	  Enable NoMount VFS path redirection support.
+EOF
         fi
 
-        # Register in fs/Kconfig
-        if ! grep -q 'source "fs/nomount/Kconfig"' "fs/Kconfig"; then
-            awk '
-                /^endmenu/ { last_match = NR }
-                { lines[NR] = $0 }
-                END {
-                    for (i = 1; i <= NR; i++) {
-                        if (i == last_match) print "source \"fs/nomount/Kconfig\""
-                        print lines[i]
-                    }
-                }
-            ' "fs/Kconfig" > "fs/Kconfig.tmp" && mv "fs/Kconfig.tmp" "fs/Kconfig"
-            echo "[+] Added nomount to fs/Kconfig"
+        # Fallback: ensure Makefile exists
+        if [ ! -f "fs/nomount/Makefile" ]; then
+            cat << 'EOF' > fs/nomount/Makefile
+obj-$(CONFIG_NOMOUNT) += nomount.o
+EOF
         fi
+
+        # Clean up cloned repo folder
+        rm -rf NoMount
 
         # 3. Robust Python Patcher for Linux 4.9 Backported VFS Signatures
         echo "[+] Applying Linux 4.9 compatibility patch to nomount.c..."
         python3 - << 'EOF'
-        filename = 'NoMount/kernel/src/nomount.c'
+        import os
+
+        filename = 'fs/nomount/nomount.c'
+        if not os.path.exists(filename):
+            print("[-] Error: fs/nomount/nomount.c not found!")
+            exit(1)
+
         with open(filename, 'r') as f:
             content = f.read()
 
@@ -58,7 +67,7 @@ runs:
             'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
         )
 
-        # Robustly find nm_getattr, handle multi-line parameter blocks, and replace with 4-arg signature
+        # Handle multi-line nm_getattr signature and replace with 4-arg signature + local mappings
         pos = content.find('nm_getattr')
         if pos != -1:
             start_pos = content.rfind('int', 0, pos)
@@ -73,12 +82,30 @@ runs:
             f.write(content)
         EOF
 
-        # 4. Enable CONFIG_NOMOUNT in target defconfig
+        # 4. Register NoMount in filesystem build system
+        echo "Integrating NoMount into fs/Makefile and fs/Kconfig..."
+        grep -q "nomount" "fs/Makefile" || echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> "fs/Makefile"
+        
+        if ! grep -q 'source "fs/nomount/Kconfig"' "fs/Kconfig"; then
+            awk '
+                /^endmenu/ { last_match = NR }
+                { lines[NR] = $0 }
+                END {
+                    for (i = 1; i <= NR; i++) {
+                        if (i == last_match) print "source \"fs/nomount/Kconfig\""
+                        print lines[i]
+                    }
+                }
+            ' "fs/Kconfig" > "fs/Kconfig.tmp" && mv "fs/Kconfig.tmp" "fs/Kconfig"
+            echo "[+] Added nomount to fs/Kconfig"
+        fi
+
+        # 5. Enable CONFIG_NOMOUNT in target defconfig
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
-        if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
+        if [ -f "$DEFCONFIG_FILE" ] && ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
             echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
             echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
         fi
 
-        echo "[+] NoMount official integration and VFS patching completed successfully."
+        echo "[+] NoMount integration and patching completed successfully."
         
