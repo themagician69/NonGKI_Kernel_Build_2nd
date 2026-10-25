@@ -1,15 +1,28 @@
-name: 'Patch NoMount for Kernel.'
-
-runs:
-  using: 'composite'
-  steps:
-      - name: Patch NoMount
-        if: env.NOMOUNT_ENABLE == 'true'
-        shell: bash
-        run: |
-          cd $GITHUB_WORKSPACE/device_kernel/
-          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
-
-          echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
-
-          echo "[+] Patched NoMount for your kernel successfully."
+    - name: Setup and Patch NoMount for VFS Signatures
+      if: env.NOMOUNT_ENABLE == 'true'
+      shell: bash
+      run: |
+        cd device_kernel
+        curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
+        python3 -c "
+        import os
+        f = 'fs/nomount/nomount.c'
+        if os.path.exists(f):
+            content = open(f).read()
+            content = content.replace('vfs_getattr_nosec(&info->r_path, stat)', 'vfs_getattr_nosec(&info->r_path, stat, 0, 0)')
+            pos = content.find('nm_getattr')
+            if pos != -1:
+                start = content.rfind('int', 0, pos)
+                brace = content.find('{', pos)
+                if start != -1 and brace != -1:
+                    old_sig = content[start:brace+1]
+                    new_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
+                    content = content.replace(old_sig, new_sig, 1)
+            open(f, 'w').write(content)
+            print('[+] Successfully patched nomount.c VFS signatures.')
+        "
+        DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+        if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
+            echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
+        fi
+        
