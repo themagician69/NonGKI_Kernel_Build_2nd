@@ -1,5 +1,5 @@
 name: 'Patch NoMount'
-description: 'Clones and adapts NoMount for hybrid Linux 4.9 VFS signatures'
+description: 'Clones, patches, and adapts NoMount for Linux 4.9 VFS compatibility'
 runs:
   using: 'composite'
   steps:
@@ -18,11 +18,11 @@ runs:
         mkdir -p fs/nomount
         cp -rf NoMount/kernel/src/* fs/nomount/
         
-        # Clean up cloned repo folder
+        # Clean up the cloned repo folder
         rm -rf NoMount
 
-        # 2. Adapt NoMount to match the kernel's 4-argument getattr API and resolve dentry references
-        echo "[+] Adapting NoMount for 4-argument VFS getattr..."
+        # 2. Precision Python patcher for nm_getattr and vfs_getattr_nosec
+        echo "[+] Applying precision VFS compatibility patches to NoMount..."
         python3 - << 'EOF'
         import re
 
@@ -37,29 +37,18 @@ runs:
             content
         )
 
-        # Fix nm_getattr function signature for 4 arguments
-        pattern = r'(static\s+)?int\s+nm_getattr\s*\([^)]*\)'
-        replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
-        content, _ = re.subn(pattern, replacement, content)
+        # Target ONLY nm_getattr signature and inject local dentry/mnt mappings safely inside its scope
+        nm_getattr_pattern = r'static\s+int\s+nm_getattr\s*\([^)]*\)\s*\{'
+        
+        def replace_getattr(match):
+            return 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
 
-        # Inject local dentry mapping where d_backing_inode(dentry) is used
-        idx = content.find('d_backing_inode(dentry)')
-        while idx != -1:
-            brace_idx = content.rfind('{', 0, idx)
-            if brace_idx != -1:
-                func_body_snippet = content[brace_idx:idx]
-                if 'struct dentry *dentry' not in func_body_snippet:
-                    content = content[:brace_idx + 1] + '\n    struct dentry *dentry = path->dentry;' + content[brace_idx + 1:]
-                    idx = content.find('d_backing_inode(dentry)', brace_idx + len('\n    struct dentry *dentry = path->dentry;'))
-                else:
-                    break
-            else:
-                break
-            idx = content.find('d_backing_inode(dentry)', idx + 1)
+        content, count = re.subn(nm_getattr_pattern, replace_getattr, content)
+        print(f"[+] Successfully patched nm_getattr signature and scope ({count} match).")
 
         with open(filename, 'w') as f:
             f.write(content)
-        print("[+] NoMount VFS adaptation applied successfully.")
+        print("[+] Precision patching completed successfully.")
         EOF
 
         # 3. Register NoMount in filesystem build system
@@ -74,5 +63,5 @@ runs:
             echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
         fi
 
-        echo "[+] NoMount integration completed successfully."
+        echo "[+] NoMount integration and patching completed successfully."
         
