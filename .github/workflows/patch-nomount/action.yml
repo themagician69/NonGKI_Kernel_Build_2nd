@@ -1,5 +1,5 @@
 name: 'Patch NoMount'
-description: 'Clones, patches, and adapts NoMount for Linux 4.9 VFS compatibility'
+description: 'Clones, sets up, and adapts NoMount for Linux 4.9 VFS compatibility'
 runs:
   using: 'composite'
   steps:
@@ -9,59 +9,76 @@ runs:
       run: |
         cd $GITHUB_WORKSPACE/device_kernel
         
-        # Clean up previous attempts
+        # Clean up any previous attempts
         rm -rf NoMount fs/nomount
         
-        # 1. Clone NoMount and copy source files into fs/nomount/
+        # 1. Clone NoMount official repository
         echo "Cloning NoMount framework..."
         git clone https://github.com/maxsteeel/nomount.git NoMount
-        mkdir -p fs/nomount
-        cp -rf NoMount/kernel/src/* fs/nomount/
         
-        # Clean up the cloned repo folder
-        rm -rf NoMount
+        # 2. Run official symlink & Makefile/Kconfig integration logic
+        cd NoMount/kernel
+        # Use the official setup script logic inline or execute it
+        cd ../..
+        
+        mkdir -p fs/nomount
+        ln -sfn "$(realpath --relative-to="fs" "NoMount/kernel/src")" "fs/nomount"
+        
+        # Register in fs/Makefile
+        if ! grep -q "nomount" "fs/Makefile"; then
+            printf "\nobj-\$(CONFIG_NOMOUNT) += nomount/\n" >> "fs/Makefile"
+            echo "[+] Added nomount to fs/Makefile"
+        fi
 
-        # 2. Precision Python patcher for nm_getattr and vfs_getattr_nosec
-        echo "[+] Applying precision VFS compatibility patches to NoMount..."
+        # Register in fs/Kconfig
+        if ! grep -q 'source "fs/nomount/Kconfig"' "fs/Kconfig"; then
+            awk '
+                /^endmenu/ { last_match = NR }
+                { lines[NR] = $0 }
+                END {
+                    for (i = 1; i <= NR; i++) {
+                        if (i == last_match) print "source \"fs/nomount/Kconfig\""
+                        print lines[i]
+                    }
+                }
+            ' "fs/Kconfig" > "fs/Kconfig.tmp" && mv "fs/Kconfig.tmp" "fs/Kconfig"
+            echo "[+] Added nomount to fs/Kconfig"
+        fi
+
+        # 3. Robust Python Patcher for Linux 4.9 Backported VFS Signatures
+        echo "[+] Applying Linux 4.9 compatibility patch to nomount.c..."
         python3 - << 'EOF'
-        import re
-
-        filename = 'fs/nomount/nomount.c'
+        filename = 'NoMount/kernel/src/nomount.c'
         with open(filename, 'r') as f:
             content = f.read()
 
         # Fix vfs_getattr_nosec calls to pass 4 arguments
-        content = re.sub(
-            r'vfs_getattr_nosec\s*\(\s*([^,]+),\s*([^)]+)\s*\)',
-            r'vfs_getattr_nosec(\1, \2, 0, 0)',
-            content
+        content = content.replace(
+            'vfs_getattr_nosec(&info->r_path, stat)',
+            'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
         )
 
-        # Target ONLY nm_getattr signature and inject local dentry/mnt mappings safely inside its scope
-        nm_getattr_pattern = r'static\s+int\s+nm_getattr\s*\([^)]*\)\s*\{'
-        
-        def replace_getattr(match):
-            return 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-
-        content, count = re.subn(nm_getattr_pattern, replace_getattr, content)
-        print(f"[+] Successfully patched nm_getattr signature and scope ({count} match).")
+        # Robustly find nm_getattr, handle multi-line parameter blocks, and replace with 4-arg signature
+        pos = content.find('nm_getattr')
+        if pos != -1:
+            start_pos = content.rfind('int', 0, pos)
+            brace_pos = content.find('{', pos)
+            if start_pos != -1 and brace_pos != -1:
+                old_sig_block = content[start_pos:brace_pos + 1]
+                new_sig_block = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
+                content = content.replace(old_sig_block, new_sig_block, 1)
+                print("[+] Successfully replaced multi-line nm_getattr signature and injected dentry/mnt.")
 
         with open(filename, 'w') as f:
             f.write(content)
-        print("[+] Precision patching completed successfully.")
         EOF
 
-        # 3. Register NoMount in filesystem build system
-        echo "Integrating NoMount into fs/Makefile and fs/Kconfig..."
-        grep -q "nomount" "fs/Makefile" || echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> "fs/Makefile"
-        grep -q "fs/nomount/Kconfig" "fs/Kconfig" || echo 'source "fs/nomount/Kconfig"' >> "fs/Kconfig"
-
-        # 4. Enable CONFIG_NOMOUNT in your target defconfig dynamically
+        # 4. Enable CONFIG_NOMOUNT in target defconfig
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
             echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
             echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
         fi
 
-        echo "[+] NoMount integration and patching completed successfully."
+        echo "[+] NoMount official integration and VFS patching completed successfully."
         
