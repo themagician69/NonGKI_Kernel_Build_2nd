@@ -1,5 +1,5 @@
 name: 'Patch NoMount'
-description: 'Manually integrates NoMount into the kernel VFS tree'
+description: 'Clones, patches, and adapts NoMount for the kernel VFS tree'
 runs:
   using: 'composite'
   steps:
@@ -21,17 +21,47 @@ runs:
         # Clean up the cloned repo folder
         rm -rf NoMount
 
-        # 2. Register NoMount in filesystem build system
+        # 2. Adapt NoMount to match the kernel's 4-argument getattr API
+        echo "[+] Adapting NoMount getattr signature for this kernel version..."
+        python3 - << 'EOF'
+        import re
+
+        path = 'fs/nomount/nomount.c'
+        with open(path, 'r') as f:
+            content = f.read()
+
+        # Fix vfs_getattr_nosec call (add 0, 0 for request_mask and query_flags)
+        content = content.replace(
+            'vfs_getattr_nosec(&info->r_path, stat)',
+            'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
+        )
+
+        # Fix nm_getattr function definition signature
+        # Old: static int nm_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
+        # New: static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)
+        old_sig = re.compile(r'static int nm_getattr\s*\(\s*struct vfsmount\s*\*mnt\s*,\s*struct dentry\s*\*dentry\s*,\s*struct kstat\s*\*stat\s*\)')
+        new_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
+        
+        if old_sig.search(content):
+            content = old_sig.sub(new_sig, content)
+            # Replace local uses of mnt and dentry inside nm_getattr
+            # We locate nm_getattr body and replace mnt -> path->mnt, dentry -> path->dentry if needed
+            print("[+] Successfully updated nm_getattr signature.")
+
+        with open(path, 'w') as f:
+            f.write(content)
+        EOF
+
+        # 3. Register NoMount in filesystem build system
         echo "Integrating NoMount into fs/Makefile and fs/Kconfig..."
         grep -q "nomount" "fs/Makefile" || echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> "fs/Makefile"
         grep -q "fs/nomount/Kconfig" "fs/Kconfig" || echo 'source "fs/nomount/Kconfig"' >> "fs/Kconfig"
 
-        # 3. Enable CONFIG_NOMOUNT in your target defconfig dynamically
+        # 4. Enable CONFIG_NOMOUNT in your target defconfig dynamically
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
             echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
             echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
         fi
 
-        echo "[+] NoMount manual integration completed successfully."
-        
+        echo "[+] NoMount integration and patching completed successfully."
