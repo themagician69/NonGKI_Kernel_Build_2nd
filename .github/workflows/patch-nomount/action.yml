@@ -10,21 +10,30 @@ runs:
         cd device_kernel
         curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
         python3 -c "
-        import os
+        import os, re
         f = 'fs/nomount/nomount.c'
         if os.path.exists(f):
             content = open(f).read()
+            
+            # 1. Fix vfs_getattr_nosec calls with 4 arguments
             content = content.replace('vfs_getattr_nosec(&info->r_path, stat)', 'vfs_getattr_nosec(&info->r_path, stat, 0, 0)')
-            pos = content.find('nm_getattr')
-            if pos != -1:
-                start = content.rfind('int', 0, pos)
-                brace = content.find('{', pos)
-                if start != -1 and brace != -1:
-                    old_sig = content[start:brace+1]
-                    new_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-                    content = content.replace(old_sig, new_sig, 1)
+            
+            # 2. Remove the version check wrapper for nm_getattr and force the modern 4-argument signature
+            content = re.sub(
+                r'#if LINUX_VERSION_CODE < KERNEL_VERSION\(4,\s*11,\s*0\).*?#else\s*(static int nm_getattr\(const struct path \*path, struct kstat \*stat, u32 request_mask, unsigned int query_flags\))\s*#endif',
+                r'\1',
+                content,
+                flags=re.DOTALL
+            )
+            
+            # Fallback direct replacement if old signature exists without wrapper
+            content = content.replace(
+                'static int nm_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)',
+                'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
+            )
+            
             open(f, 'w').write(content)
-            print('[+] Successfully patched nomount.c VFS signatures.')
+            print('[+] Successfully patched nomount.c for backported VFS signatures.')
         "
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
