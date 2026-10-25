@@ -21,8 +21,8 @@ runs:
         # Clean up the cloned repo folder
         rm -rf NoMount
 
-        # 2. Adapt NoMount to match the kernel's 4-argument getattr API and fix dentry reference
-        echo "[+] Adapting NoMount getattr signature and dentry references..."
+        # 2. Robustly adapt NoMount getattr signature and arguments via Python
+        echo "[+] Adapting NoMount getattr signature and compatibility..."
         python3 - << 'EOF'
         import re
 
@@ -36,12 +36,23 @@ runs:
             'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
         )
 
-        # Fix nm_getattr function signature and map dentry to path->dentry
-        old_sig_pattern = r'static int nm_getattr\s*\(\s*struct vfsmount\s*\*mnt\s*,\s*struct dentry\s*\*dentry\s*,\s*struct kstat\s*\*stat\s*\)\s*\{'
-        new_replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;'
+        # Flexible pattern to match nm_getattr definition regardless of parameter naming/spacing
+        pattern = r'(static\s+)?int\s+nm_getattr\s*\([^)]*\)'
+        replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
         
-        content, count = re.subn(old_sig_pattern, new_replacement, content)
-        print(f"[+] Successfully updated nm_getattr signature ({count} match).")
+        new_content, count = re.subn(pattern, replacement, content)
+        print(f"[+] Replaced nm_getattr signature matches: {count}")
+
+        # Inject local dentry and mnt definitions right at the beginning of nm_getattr
+        target = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {'
+        injection = target + '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
+        
+        if target in new_content:
+            content = new_content.replace(target, injection, 1)
+            print("[+] Successfully injected local dentry/mnt mappings.")
+        else:
+            content = new_content
+            print("[-] Warning: Target signature header for body injection not found exactly.")
 
         with open(path, 'w') as f:
             f.write(content)
