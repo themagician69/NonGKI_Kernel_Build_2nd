@@ -1,5 +1,5 @@
 name: 'Patch NoMount'
-description: 'Clones, patches, and adapts NoMount for the kernel VFS tree'
+description: 'Clones and adapts NoMount for hybrid Linux 4.9 VFS signatures'
 runs:
   using: 'composite'
   steps:
@@ -18,44 +18,48 @@ runs:
         mkdir -p fs/nomount
         cp -rf NoMount/kernel/src/* fs/nomount/
         
-        # Clean up the cloned repo folder
+        # Clean up cloned repo folder
         rm -rf NoMount
 
-        # 2. Robustly adapt NoMount getattr signature and arguments via Python
-        echo "[+] Adapting NoMount getattr signature and compatibility..."
+        # 2. Adapt NoMount to match the kernel's 4-argument getattr API and resolve dentry references
+        echo "[+] Adapting NoMount for 4-argument VFS getattr..."
         python3 - << 'EOF'
         import re
 
-        path = 'fs/nomount/nomount.c'
-        with open(path, 'r') as f:
+        filename = 'fs/nomount/nomount.c'
+        with open(filename, 'r') as f:
             content = f.read()
 
-        # Fix vfs_getattr_nosec call (add 0, 0 for request_mask and query_flags)
-        content = content.replace(
-            'vfs_getattr_nosec(&info->r_path, stat)',
-            'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
+        # Fix vfs_getattr_nosec calls to pass 4 arguments
+        content = re.sub(
+            r'vfs_getattr_nosec\s*\(\s*([^,]+),\s*([^)]+)\s*\)',
+            r'vfs_getattr_nosec(\1, \2, 0, 0)',
+            content
         )
 
-        # Flexible pattern to match nm_getattr definition regardless of parameter naming/spacing
+        # Fix nm_getattr function signature for 4 arguments
         pattern = r'(static\s+)?int\s+nm_getattr\s*\([^)]*\)'
         replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
-        
-        new_content, count = re.subn(pattern, replacement, content)
-        print(f"[+] Replaced nm_getattr signature matches: {count}")
+        content, _ = re.subn(pattern, replacement, content)
 
-        # Inject local dentry and mnt definitions right at the beginning of nm_getattr
-        target = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {'
-        injection = target + '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-        
-        if target in new_content:
-            content = new_content.replace(target, injection, 1)
-            print("[+] Successfully injected local dentry/mnt mappings.")
-        else:
-            content = new_content
-            print("[-] Warning: Target signature header for body injection not found exactly.")
+        # Inject local dentry mapping where d_backing_inode(dentry) is used
+        idx = content.find('d_backing_inode(dentry)')
+        while idx != -1:
+            brace_idx = content.rfind('{', 0, idx)
+            if brace_idx != -1:
+                func_body_snippet = content[brace_idx:idx]
+                if 'struct dentry *dentry' not in func_body_snippet:
+                    content = content[:brace_idx + 1] + '\n    struct dentry *dentry = path->dentry;' + content[brace_idx + 1:]
+                    idx = content.find('d_backing_inode(dentry)', brace_idx + len('\n    struct dentry *dentry = path->dentry;'))
+                else:
+                    break
+            else:
+                break
+            idx = content.find('d_backing_inode(dentry)', idx + 1)
 
-        with open(path, 'w') as f:
+        with open(filename, 'w') as f:
             f.write(content)
+        print("[+] NoMount VFS adaptation applied successfully.")
         EOF
 
         # 3. Register NoMount in filesystem build system
@@ -70,5 +74,5 @@ runs:
             echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
         fi
 
-        echo "[+] NoMount integration and patching completed successfully."
+        echo "[+] NoMount integration completed successfully."
         
