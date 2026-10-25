@@ -1,98 +1,15 @@
-name: 'Patch NoMount'
-description: 'Clones, patches, and integrates NoMount into the kernel VFS tree'
+name: 'Patch NoMount for Kernel.'
+
 runs:
   using: 'composite'
   steps:
-    - name: Patch NoMount
-      if: env.NOMOUNT_ENABLE == 'true'
-      shell: bash
-      run: |
-        cd $GITHUB_WORKSPACE/device_kernel
-        
-        # Clean up previous attempts
-        rm -rf NoMount fs/nomount
-        
-        # 1. Clone NoMount framework
-        echo "Cloning NoMount framework..."
-        git clone https://github.com/maxsteeel/nomount.git NoMount
-        
-        # 2. Set up fs/nomount directory and copy all required files
-        mkdir -p fs/nomount
-        
-        if [ -d "NoMount/kernel/src" ]; then
-            cp -rf NoMount/kernel/src/* fs/nomount/
-        fi
-        
-        cp -f NoMount/kernel/Kconfig fs/nomount/ 2>/dev/null || true
-        cp -f NoMount/kernel/Makefile fs/nomount/ 2>/dev/null || true
-        
-        if [ ! -f "fs/nomount/Kconfig" ]; then
-            printf "config NOMOUNT\n    bool \"NoMount\"\n    default y\n" > fs/nomount/Kconfig
-        fi
-        
-        if [ ! -f "fs/nomount/Makefile" ]; then
-            echo "obj-\$(CONFIG_NOMOUNT) += nomount.o" > fs/nomount/Makefile
-        fi
-        
-        rm -rf NoMount
-        
-        # 3. Create and execute a temporary Python patch script (avoids YAML multiline parsing bugs)
-        cat << 'EOF' > patch_nomount.py
-        import os
+      - name: Patch NoMount
+        if: env.NOMOUNT_ENABLE == 'true'
+        shell: bash
+        run: |
+          cd $GITHUB_WORKSPACE/device_kernel/
+          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
 
-        filename = 'fs/nomount/nomount.c'
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                content = f.read()
+          echo "CONFIG_NOMOUNT=y" >> ./arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}
 
-            # Fix vfs_getattr_nosec calls to pass 4 arguments
-            content = content.replace(
-                'vfs_getattr_nosec(&info->r_path, stat)',
-                'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
-            )
-
-            # Handle multi-line nm_getattr signature and replace with 4-arg signature + local mappings
-            pos = content.find('nm_getattr')
-            if pos != -1:
-                start_pos = content.rfind('int', 0, pos)
-                brace_pos = content.find('{', pos)
-                if start_pos != -1 and brace_pos != -1:
-                    old_sig_block = content[start_pos:brace_pos + 1]
-                    new_sig_block = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-                    content = content.replace(old_sig_block, new_sig_block, 1)
-                    print("[+] Successfully replaced multi-line nm_getattr signature and injected dentry/mnt.")
-
-            with open(filename, 'w') as f:
-                f.write(content)
-        EOF
-
-        python3 patch_nomount.py
-        rm -f patch_nomount.py
-        
-        # 4. Register NoMount in filesystem build system
-        echo "Integrating NoMount into fs/Makefile and fs/Kconfig..."
-        grep -q "nomount" "fs/Makefile" || echo "obj-\$(CONFIG_NOMOUNT) += nomount/" >> "fs/Makefile"
-        
-        if ! grep -q 'source "fs/nomount/Kconfig"' "fs/Kconfig"; then
-            awk '
-                /^endmenu/ { last_match = NR }
-                { lines[NR] = $0 }
-                END {
-                    for (i = 1; i <= NR; i++) {
-                        if (i == last_match) print "source \"fs/nomount/Kconfig\""
-                        print lines[i]
-                    }
-                }
-            ' "fs/Kconfig" > "fs/Kconfig.tmp" && mv "fs/Kconfig.tmp" "fs/Kconfig"
-            echo "[+] Added nomount to fs/Kconfig"
-        fi
-        
-        # 5. Enable CONFIG_NOMOUNT in target defconfig
-        DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
-        if [ -f "$DEFCONFIG_FILE" ] && ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
-            echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
-            echo "[+] Added CONFIG_NOMOUNT=y to $DEFCONFIG_FILE"
-        fi
-        
-        echo "[+] NoMount integration and patching completed successfully."
-		
+          echo "[+] Patched NoMount for your kernel successfully."
