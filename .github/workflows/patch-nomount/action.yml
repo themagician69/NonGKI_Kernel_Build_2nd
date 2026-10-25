@@ -21,8 +21,8 @@ runs:
         # Clean up the cloned repo folder
         rm -rf NoMount
 
-        # 2. Adapt NoMount to match the kernel's 4-argument getattr API
-        echo "[+] Adapting NoMount getattr signature for this kernel version..."
+        # 2. Adapt NoMount to match the kernel's 4-argument getattr API and fix dentry reference
+        echo "[+] Adapting NoMount getattr signature and dentry references..."
         python3 - << 'EOF'
         import re
 
@@ -36,17 +36,12 @@ runs:
             'vfs_getattr_nosec(&info->r_path, stat, 0, 0)'
         )
 
-        # Fix nm_getattr function definition signature
-        # Old: static int nm_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
-        # New: static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)
-        old_sig = re.compile(r'static int nm_getattr\s*\(\s*struct vfsmount\s*\*mnt\s*,\s*struct dentry\s*\*dentry\s*,\s*struct kstat\s*\*stat\s*\)')
-        new_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
+        # Fix nm_getattr function signature and map dentry to path->dentry
+        old_sig_pattern = r'static int nm_getattr\s*\(\s*struct vfsmount\s*\*mnt\s*,\s*struct dentry\s*\*dentry\s*,\s*struct kstat\s*\*stat\s*\)\s*\{'
+        new_replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;'
         
-        if old_sig.search(content):
-            content = old_sig.sub(new_sig, content)
-            # Replace local uses of mnt and dentry inside nm_getattr
-            # We locate nm_getattr body and replace mnt -> path->mnt, dentry -> path->dentry if needed
-            print("[+] Successfully updated nm_getattr signature.")
+        content, count = re.subn(old_sig_pattern, new_replacement, content)
+        print(f"[+] Successfully updated nm_getattr signature ({count} match).")
 
         with open(path, 'w') as f:
             f.write(content)
@@ -65,3 +60,4 @@ runs:
         fi
 
         echo "[+] NoMount integration and patching completed successfully."
+        
