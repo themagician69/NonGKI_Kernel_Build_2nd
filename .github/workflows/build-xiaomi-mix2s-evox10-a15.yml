@@ -118,10 +118,29 @@ jobs:
 
       - name: 🪛 Extra Kernel Options
         run: |
-          # Only ${{ env.DEVICE_NAME }} use it.
           cd $GITHUB_WORKSPACE/device_kernel
-
-          # Nothing
+          DEFCONFIG_FILE="arch/arm64/configs/${{ env.DEFCONFIG_NAME }}"
+          
+          if [ -f "$DEFCONFIG_FILE" ]; then
+              # Set localversion to mimic stock release signature (-perf)
+              if grep -q "CONFIG_LOCALVERSION=" "$DEFCONFIG_FILE"; then
+                  sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-perf"/' "$DEFCONFIG_FILE"
+              else
+                  echo 'CONFIG_LOCALVERSION="-perf"' >> "$DEFCONFIG_FILE"
+              fi
+              
+              # Disable automatic git hash/branch suffix appends
+              if grep -q "CONFIG_LOCALVERSION_AUTO" "$DEFCONFIG_FILE"; then
+                  sed -i 's/CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' "$DEFCONFIG_FILE"
+              else
+                  echo '# CONFIG_LOCALVERSION_AUTO is not set' >> "$DEFCONFIG_FILE"
+              fi
+              
+              echo "[+] Kernel localversion sanitized to look generic (-perf)."
+          else
+              echo "[-] Defconfig file not found at $DEFCONFIG_FILE"
+              exit 1
+          fi
 
       - name: 🧰 Patch Kernel of Re:Kernel
         uses: ./.github/workflows/patch-rekernel
@@ -143,3 +162,4 @@ jobs:
 
       - name: ✏️ Upload Artifacts
         uses: ./.github/workflows/upload-files
+        
