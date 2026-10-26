@@ -9,7 +9,7 @@ runs:
       run: |
         cd device_kernel
         curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
-        python3 -c "
+        python3 - << 'EOF'
         import os, re
         f = 'fs/nomount/nomount.c'
         if os.path.exists(f):
@@ -24,16 +24,14 @@ runs:
             
             # 3. Force the modern 4-argument signature for nm_getattr and inject local dentry/mnt definitions
             old_sig_pattern = r'static int nm_getattr\s*\([^\)]+\)\s*\{'
-            replacement = '''static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {
-    struct dentry *dentry = path->dentry;
-    struct vfsmount *mnt = path->mnt;'''
+            replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
             
             if re.search(old_sig_pattern, content):
                 content = re.sub(old_sig_pattern, replacement, content, count=1)
             
             open(f, 'w').write(content)
             print('[+] Successfully forced modern 4-arg nm_getattr implementation.')
-        "
+        EOF
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
             echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
