@@ -15,22 +15,33 @@ runs:
         if os.path.exists(f):
             content = open(f).read()
             
-            # 1. Fix all vfs_getattr_nosec calls to use 4 arguments
+            # 1. Fix all vfs_getattr_nosec calls to use 4 arguments safely
             content = re.sub(r'vfs_getattr_nosec\s*\(([^,\)]+),\s*([^,\)]+)\)', r'vfs_getattr_nosec(\1, \2, 0, 0)', content)
             
-            # 2. Remove the old #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0) wrapper around nm_getattr
-            content = re.sub(r'#if\s+LINUX_VERSION_CODE\s*<\s*KERNEL_VERSION\(4\s*,\s*11\s*,\s*0\).*?#else\s*', '', content, flags=re.DOTALL)
-            content = re.sub(r'#endif\s*/\*.*?nm_getattr.*?\*/', '', content)
+            # 2. Remove legacy preprocessor conditional wrappers around nm_getattr
+            content = re.sub(r'#if\s+LINUX_VERSION_CODE\s*<\s*KERNEL_VERSION\(4\s*,\s*11\s*,\s*0\)', '', content)
+            content = content.replace('#else', '')
+            content = re.sub(r'#endif\s*/\*.*?getattr.*?\*/', '', content)
             
-            # 3. Force the modern 4-argument signature for nm_getattr and inject local dentry/mnt definitions
-            old_sig_pattern = r'static int nm_getattr\s*\([^\)]+\)\s*\{'
-            replacement = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-            
-            if re.search(old_sig_pattern, content):
-                content = re.sub(old_sig_pattern, replacement, content, count=1)
+            # 3. Locate nm_getattr, normalize signature, and inject local dentry/mnt declarations
+            pos = content.find('nm_getattr')
+            while pos != -1:
+                func_start = content.rfind('static int', 0, pos)
+                if func_start != -1:
+                    brace_pos = content.find('{', func_start)
+                    if brace_pos != -1:
+                        modern_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
+                        content = content[:func_start] + modern_sig + ' ' + content[brace_pos:]
+                        
+                        brace_pos = content.find('{', func_start)
+                        body_start = brace_pos + 1
+                        injection = '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
+                        if 'struct dentry *dentry = path->dentry;' not in content[body_start:body_start+100]:
+                            content = content[:body_start] + injection + content[body_start:]
+                pos = content.find('nm_getattr', pos + 20)
             
             open(f, 'w').write(content)
-            print('[+] Successfully forced modern 4-arg nm_getattr implementation.')
+            print('[+] Successfully cleaned up preprocessor tags and patched nm_getattr.')
         EOF
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
