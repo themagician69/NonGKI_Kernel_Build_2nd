@@ -15,25 +15,24 @@ runs:
         if os.path.exists(f):
             content = open(f).read()
             
-            # 1. Fix vfs_getattr_nosec calls with 4 arguments
-            content = content.replace('vfs_getattr_nosec(&info->r_path, stat)', 'vfs_getattr_nosec(&info->r_path, stat, 0, 0)')
+            # 1. Fix all vfs_getattr_nosec calls to use 4 arguments
+            content = re.sub(r'vfs_getattr_nosec\s*\(([^,\)]+),\s*([^,\)]+)\)', r'vfs_getattr_nosec(\1, \2, 0, 0)', content)
             
-            # 2. Remove the version check wrapper for nm_getattr and force the modern 4-argument signature
-            content = re.sub(
-                r'#if LINUX_VERSION_CODE < KERNEL_VERSION\(4,\s*11,\s*0\).*?#else\s*(static int nm_getattr\(const struct path \*path, struct kstat \*stat, u32 request_mask, unsigned int query_flags\))\s*#endif',
-                r'\1',
-                content,
-                flags=re.DOTALL
-            )
+            # 2. Remove the old #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0) wrapper around nm_getattr
+            content = re.sub(r'#if\s+LINUX_VERSION_CODE\s*<\s*KERNEL_VERSION\(4\s*,\s*11\s*,\s*0\).*?#else\s*', '', content, flags=re.DOTALL)
+            content = re.sub(r'#endif\s*/\*.*?nm_getattr.*?\*/', '', content)
             
-            # Fallback direct replacement if old signature exists without wrapper
-            content = content.replace(
-                'static int nm_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)',
-                'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
-            )
+            # 3. Force the modern 4-argument signature for nm_getattr and inject local dentry/mnt definitions
+            old_sig_pattern = r'static int nm_getattr\s*\([^\)]+\)\s*\{'
+            replacement = '''static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags) {
+    struct dentry *dentry = path->dentry;
+    struct vfsmount *mnt = path->mnt;'''
+            
+            if re.search(old_sig_pattern, content):
+                content = re.sub(old_sig_pattern, replacement, content, count=1)
             
             open(f, 'w').write(content)
-            print('[+] Successfully patched nomount.c for backported VFS signatures.')
+            print('[+] Successfully forced modern 4-arg nm_getattr implementation.')
         "
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
