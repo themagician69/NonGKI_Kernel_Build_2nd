@@ -90,6 +90,10 @@ env:
 
   FREE_MORE_SPACE: "false" # if u want get more space, enabled it.
 
+  # Generic Build User & Host Spoofing
+  KBUILD_BUILD_USER: "root"
+  KBUILD_BUILD_HOST: "android-build"
+
 jobs:
   build-kernel:
     name: Xiaomi Poco F1 kernel
