@@ -15,33 +15,23 @@ runs:
         if os.path.exists(f):
             content = open(f).read()
             
-            # 1. Fix all vfs_getattr_nosec calls to use 4 arguments safely
-            content = re.sub(r'vfs_getattr_nosec\s*\(([^,\)]+),\s*([^,\)]+)\)', r'vfs_getattr_nosec(\1, \2, 0, 0)', content)
+            # 1. Fix vfs_getattr_nosec calls that have only 2 arguments
+            content = content.replace('vfs_getattr_nosec(&info->r_path, stat)', 'vfs_getattr_nosec(&info->r_path, stat, 0, 0)')
             
-            # 2. Remove legacy preprocessor conditional wrappers around nm_getattr
-            content = re.sub(r'#if\s+LINUX_VERSION_CODE\s*<\s*KERNEL_VERSION\(4\s*,\s*11\s*,\s*0\)', '', content)
-            content = content.replace('#else', '')
-            content = re.sub(r'#endif\s*/\*.*?getattr.*?\*/', '', content)
-            
-            # 3. Locate nm_getattr, normalize signature, and inject local dentry/mnt declarations
-            pos = content.find('nm_getattr')
-            while pos != -1:
-                func_start = content.rfind('static int', 0, pos)
-                if func_start != -1:
-                    brace_pos = content.find('{', func_start)
-                    if brace_pos != -1:
-                        modern_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
-                        content = content[:func_start] + modern_sig + ' ' + content[brace_pos:]
-                        
-                        brace_pos = content.find('{', func_start)
-                        body_start = brace_pos + 1
-                        injection = '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-                        if 'struct dentry *dentry = path->dentry;' not in content[body_start:body_start+100]:
-                            content = content[:body_start] + injection + content[body_start:]
-                pos = content.find('nm_getattr', pos + 20)
+            # 2. Inject local dentry and mnt variable declarations into modern nm_getattr safely
+            modern_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
+            if modern_sig in content:
+                idx = content.find(modern_sig)
+                brace_idx = content.find('{', idx)
+                if brace_idx != -1:
+                    body_start = brace_idx + 1
+                    injection = '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
+                    if 'struct dentry *dentry = path->dentry;' not in content[body_start:body_start+150]:
+                        content = content[:body_start] + injection + content[body_start:]
+                        print('[+] Injected dentry/mnt declarations into modern nm_getattr.')
             
             open(f, 'w').write(content)
-            print('[+] Successfully cleaned up preprocessor tags and patched nm_getattr.')
+            print('[+] Successfully applied clean NoMount VFS patch.')
         EOF
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
