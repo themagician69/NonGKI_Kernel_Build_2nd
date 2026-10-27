@@ -11,28 +11,35 @@ runs:
         curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
         python3 - << 'EOF'
         import os, re
+        
         f = 'fs/nomount/nomount.c'
         if os.path.exists(f):
             content = open(f).read()
             
-            # 1. Fix vfs_getattr_nosec calls that have only 2 arguments
-            content = content.replace('vfs_getattr_nosec(&info->r_path, stat)', 'vfs_getattr_nosec(&info->r_path, stat, 0, 0)')
+            # 1. Fix all vfs_getattr_nosec calls to pass 4 arguments
+            content = re.sub(
+                r'vfs_getattr_nosec\s*\(\s*([^,]+),\s*([^,\)]+)\s*\)',
+                r'vfs_getattr_nosec(\1, \2, 0, 0)',
+                content
+            )
             
-            # 2. Inject local dentry and mnt variable declarations into modern nm_getattr safely
-            modern_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
-            if modern_sig in content:
-                idx = content.find(modern_sig)
-                brace_idx = content.find('{', idx)
-                if brace_idx != -1:
-                    body_start = brace_idx + 1
-                    injection = '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
-                    if 'struct dentry *dentry = path->dentry;' not in content[body_start:body_start+150]:
-                        content = content[:body_start] + injection + content[body_start:]
-                        print('[+] Injected dentry/mnt declarations into modern nm_getattr.')
+            # 2. Force modern 4-argument signature for nm_getattr and inject local pointer definitions safely
+            pos = content.find('nm_getattr')
+            if pos != -1:
+                func_start = content.rfind('static int', 0, pos)
+                brace_pos = content.find('{', pos)
+                if func_start != -1 and brace_pos != -1:
+                    modern_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
+                    body_start = brace_pos + 1
+                    local_vars = '\n    struct dentry *dentry = path->dentry;\n    struct vfsmount *mnt = path->mnt;'
+                    
+                    content = content[:func_start] + modern_sig + ' {' + local_vars + content[body_start:]
+                    print('[+] Successfully patched nm_getattr signature and injected local dentry/mnt definitions.')
             
             open(f, 'w').write(content)
-            print('[+] Successfully applied clean NoMount VFS patch.')
+            print('[+] NoMount VFS patch applied cleanly.')
         EOF
+        
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
         if ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG_FILE"; then
             echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG_FILE"
