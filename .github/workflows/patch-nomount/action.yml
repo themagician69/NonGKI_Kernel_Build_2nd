@@ -8,7 +8,7 @@ runs:
       shell: bash
       run: |
         cd device_kernel
-        curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
+        curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
         python3 - << 'EOF'
         import os, re
         
@@ -16,35 +16,19 @@ runs:
         if os.path.exists(f):
             content = open(f).read()
             
-            # 1. Fix all vfs_getattr_nosec calls to pass 4 arguments
+            # 1. Ensure all vfs_getattr_nosec calls pass 4 arguments
             content = re.sub(
-                r'vfs_getattr_nosec\s*\(\s*([^,]+),\s*([^,\)]+)\s*\)',
+                r'vfs_getattr_nosec\s*\(\s*([^,\)]+),\s*([^,\)]+)\s*\)',
                 r'vfs_getattr_nosec(\1, \2, 0, 0)',
                 content
             )
             
-            # 2. Completely remove NoMount's conditional version block for nm_getattr signature and replace with modern signature
-            modern_sig = 'static int nm_getattr(const struct path *path, struct kstat *stat, u32 request_mask, unsigned int query_flags)'
-            content = re.sub(
-                r'#if\s+LINUX_VERSION_CODE\s*<\s*KERNEL_VERSION\(4\s*,\s*11\s*,\s*0\).*?#endif',
-                modern_sig,
-                content,
-                flags=re.DOTALL
-            )
-            
-            # 3. Inject local dentry extraction right after the opening brace of nm_getattr
-            pos = content.find('nm_getattr')
-            if pos != -1:
-                brace_pos = content.find('{', pos)
-                if brace_pos != -1:
-                    body_start = brace_pos + 1
-                    local_var = '\n    struct dentry *dentry = path->dentry;'
-                    if 'struct dentry *dentry = path->dentry;' not in content[body_start:body_start+80]:
-                        content = content[:body_start] + local_var + content[body_start:]
-                        print('[+] Successfully injected struct dentry *dentry = path->dentry;')
+            # 2. Lower NoMount's VFS getattr version threshold from 4.11.0 to 4.8.0 
+            # This forces the kernel tree to use NoMount's native modern 4-arg block safely.
+            content = content.replace('KERNEL_VERSION(4, 11, 0)', 'KERNEL_VERSION(4, 8, 0)')
             
             open(f, 'w').write(content)
-            print('[+] NoMount VFS conditional blocks cleaned and patched cleanly.')
+            print('[+] Successfully adjusted NoMount version threshold for backported 4.9 VFS.')
         EOF
         
         DEFCONFIG_FILE="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
