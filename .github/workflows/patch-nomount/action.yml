@@ -8,8 +8,7 @@ runs:
       shell: bash
       run: |
         cd device_kernel
-        curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
-        python3 - << 'EOF'
+        curl -s https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/master/kernel/setup.sh | bash -s        python3 - << 'EOF'
         import os, re
         
         f = 'fs/nomount/nomount.c'
